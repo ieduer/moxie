@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 默寫教練</title>
+    <title>墨力全開 - AI 默寫教練</title>
     <style>
         body { font-family: sans-serif; line-height: 1.6; padding: 20px; max-width: 800px; margin: 0 auto; background-color: #f9f9f9; }
         h1 { text-align: center; color: #333; }
@@ -19,19 +19,33 @@
         h2 { margin-top: 0; color: #0056b3; }
         .underline-blank { text-decoration: underline; color: #aaa; display: inline-block; min-width: 10em; text-align: center;} /* 給下劃線留空 */
         .answer-wrapper { margin-top: 10px; border: 1px solid #ddd; border-radius: 4px; background-color: #fff; }
-        .canvas-container { position: relative; width: 100%; height: 150px; /* 調整畫板高度 */ border-bottom: 1px solid #eee;}
-        canvas { display: block; width: 100%; height: 100%; background-color: #fff; border-radius: 4px 4px 0 0; }
+        /* 關鍵：確保 canvas-container 尺寸穩定 */
+        .canvas-container { position: relative; width: 100%; height: 150px; /* 固定高度 */ border-bottom: 1px solid #eee;}
+        /* 關鍵：設置 canvas 的顯示尺寸，讓內部尺寸可以基於此計算 */
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background-color: #fdfdfd; /* 淺灰色背景區分 */
+            border-radius: 4px 4px 0 0;
+            touch-action: none; /* 禁用觸摸滾動等默認行為 */
+        }
         .controls { padding: 5px; text-align: right; }
         .clear-btn { background-color: #f0ad4e; font-size: 0.9em; padding: 5px 10px;}
         .clear-btn:hover { background-color: #ec971f; }
         .loading { font-style: italic; color: #555; }
+        .result-item { margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        .result-item p { margin: 5px 0; }
     </style>
     <!-- 引入 Signature Pad 庫 -->
     <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
 </head>
 <body>
-    <h1>AI 默寫教練</h1>
+    <h1>墨力全開 - AI 默寫教練</h1>
     <p style="text-align: center;"><strong>目標：高考默寫 8 分，必須拿滿！一分都不能少！</strong></p>
+    <p style="text-align: center; color: orange; font-weight: bold;">
+        請務必使用工整、清晰的標準簡體字書寫，筆畫分明，避免潦草、連筆或過於藝術化的字體，否則 AI 可能無法正確識別！
+    </p>
 
     <div class="button-group">
         <button id="get-question-btn">開始挑戰</button>
@@ -55,8 +69,8 @@
         const checkBackendBtn = document.getElementById('check-backend-btn');
         const submitBtn = document.getElementById('submit-btn');
 
-        let signaturePads = []; // 用於存儲所有 signature_pad 實例
-        let currentQuestions = []; // 存儲當前題目數據
+        let signaturePads = [];
+        let currentQuestions = [];
 
         function setLoadingState(button, isLoading, defaultText) {
             if (isLoading) {
@@ -68,44 +82,58 @@
             }
         }
 
-        // 調整 Canvas 大小以適應容器
+        // --- **修改後的 resizeCanvas 函數** ---
+        // 調整 Canvas 的內部繪圖尺寸以匹配其顯示尺寸和設備像素比
         function resizeCanvas(canvas) {
             const ratio =  Math.max(window.devicePixelRatio || 1, 1);
+            // 設置 Canvas 內部繪圖緩衝區的大小
             canvas.width = canvas.offsetWidth * ratio;
             canvas.height = canvas.offsetHeight * ratio;
-            canvas.getContext("2d").scale(ratio, ratio);
+            // 縮放繪圖上下文以匹配
+            const context = canvas.getContext("2d");
+            context.scale(ratio, ratio);
+            console.log(`Canvas resized: ${canvas.id}, Ratio: ${ratio}, Width: ${canvas.width}, Height: ${canvas.height}`);
+            // 清除舊內容
+            const pad = signaturePads.find(p => p.canvas === canvas);
+            if (pad) {
+                pad.clear();
+            }
         }
 
-        // 初始化 Signature Pad
+        // --- **修改後的 initializeSignaturePads 函數** ---
         function initializeSignaturePads() {
-            signaturePads = []; // 清空舊的實例
+            signaturePads = [];
             const canvases = questionListDiv.querySelectorAll('canvas');
+
             canvases.forEach((canvas, index) => {
-                // resizeCanvas(canvas); // 初始調整一次
+                // --- **關鍵：在初始化 SignaturePad 之前調用 resizeCanvas** ---
+                try {
+                     if (canvas.offsetWidth === 0 || canvas.offsetHeight === 0) {
+                         console.warn(`Canvas ${canvas.id} has zero dimensions, skipping resize for now.`);
+                     } else {
+                        resizeCanvas(canvas); // 設置正確的分辨率
+                     }
+                } catch (e) {
+                     console.error(`Error resizing canvas ${canvas.id}:`, e);
+                }
+
                 const signaturePad = new SignaturePad(canvas, {
-                    penColor: "rgb(0, 0, 0)", // 設置筆觸顏色為黑色
-                    backgroundColor: 'rgb(255, 255, 255)' // 確保背景是白色
+                    penColor: "rgb(0, 0, 0)",
+                    backgroundColor: 'rgb(255, 255, 255)',
                 });
                 signaturePads.push(signaturePad);
 
-                // 找到對應的清除按鈕並綁定事件
                 const clearButton = canvas.closest('.answer-wrapper').querySelector('.clear-btn');
                 if (clearButton) {
-                    clearButton.addEventListener('click', () => {
+                    clearButton.addEventListener('click', (event) => {
+                         event.preventDefault();
                         signaturePad.clear();
                     });
                 }
             });
-             // 處理窗口大小變化時 Canvas 的重繪問題 (可選優化)
-             // window.addEventListener("resize", () => {
-             //     canvases.forEach((canvas, index) => {
-             //         resizeCanvas(canvas);
-             //         signaturePads[index].clear(); // 清除內容避免變形
-             //     });
-             // });
         }
 
-        // 檢查後端狀態
+        // --- 檢查後端狀態邏輯 (不變) ---
         checkBackendBtn.addEventListener('click', async () => {
             setLoadingState(checkBackendBtn, true, '檢查後端狀態');
             statusDiv.textContent = '正在檢查後端狀態...';
@@ -124,14 +152,15 @@
             }
         });
 
-        // 獲取題目
+
+        // --- 獲取題目邏輯 (修改了初始化調用時機) ---
         getQuestionBtn.addEventListener('click', async () => {
             setLoadingState(getQuestionBtn, true, '開始挑戰');
             statusDiv.textContent = '正在從後端獲取題目...';
             resultDiv.style.display = 'none';
             questionsDiv.style.display = 'none';
             questionListDiv.innerHTML = '';
-            currentQuestions = []; // 清空當前題目
+            currentQuestions = [];
 
             try {
                 const response = await fetch('/api/question');
@@ -139,7 +168,7 @@
                 const questions = await response.json();
 
                 if (questions && questions.length > 0) {
-                    currentQuestions = questions; // 保存題目數據
+                    currentQuestions = questions;
                     statusDiv.textContent = '題目獲取成功！請作答。';
                     questions.forEach((q, index) => {
                         const item = document.createElement('div');
@@ -159,9 +188,14 @@
                         `;
                         questionListDiv.appendChild(item);
                     });
-                    initializeSignaturePads(); // 初始化所有 Canvas
-                    questionsDiv.style.display = 'block';
-                    submitBtn.disabled = false;
+
+                    // --- **重要：在所有 Canvas 都添加到 DOM 之後再初始化** ---
+                    setTimeout(() => {
+                         initializeSignaturePads();
+                         questionsDiv.style.display = 'block';
+                         submitBtn.disabled = false;
+                    }, 0);
+
                 } else {
                     statusDiv.textContent = '未能獲取有效題目。後端返回空數據。';
                 }
@@ -173,93 +207,108 @@
             }
         });
 
-// 提交答案
-submitBtn.addEventListener('click', async () => {
-                setLoadingState(submitBtn, true, '提交答案');
-                resultDiv.innerHTML = '<div class="loading">正在提交答案並等待 AI 評分...</div>'; // 使用 innerHTML 添加樣式
-                resultDiv.style.display = 'block';
 
-                const answersData = [];
-                let hasEmpty = false;
-                signaturePads.forEach((pad, index) => {
-                    // 檢查 currentQuestions[index] 是否存在
-                    if (!currentQuestions || !currentQuestions[index]) {
-                        console.error(`無法獲取第 ${index + 1} 題的題目信息`);
-                        return; // 跳過這個無效的題目
-                    }
-                    const questionId = currentQuestions[index].id;
+        // --- 提交答案邏輯 (渲染部分有更新) ---
+        submitBtn.addEventListener('click', async () => {
+            setLoadingState(submitBtn, true, '提交答案');
+            resultDiv.innerHTML = '<div class="loading">正在提交答案並等待 AI 評分...</div>';
+            resultDiv.style.display = 'block';
 
-                    if (pad.isEmpty()) {
-                        answersData.push({ questionId: questionId, imageDataUrl: null });
-                    } else {
-                        // 獲取 PNG 格式的 Base64 數據 URL (質量可以調整，但 PNG 無損更適合 OCR)
-                        const dataUrl = pad.toDataURL('image/png');
-                        answersData.push({ questionId: questionId, imageDataUrl: dataUrl });
-                    }
-                });
-
-                 if (answersData.length !== currentQuestions.length) {
-                    console.error("收集到的答案數量與題目數量不匹配！");
-                    resultDiv.textContent = '提交失敗：內部錯誤，請重試。';
-                    setLoadingState(submitBtn, false, '提交答案');
+            const answersData = [];
+            signaturePads.forEach((pad, index) => {
+                if (!currentQuestions || !currentQuestions[index]) {
+                    console.error(`無法獲取第 ${index + 1} 題的題目信息`);
                     return;
-                 }
-
-                try {
-                    const response = await fetch('/api/submit', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ answers: answersData }),
-                    });
-
-                    if (!response.ok) {
-                         const errorData = await response.json().catch(() => ({ error: `HTTP 錯誤！狀態: ${response.status} ${response.statusText}` }));
-                        throw new Error(errorData.error || `HTTP 錯誤！狀態: ${response.status}`);
-                    }
-
-                    const resultData = await response.json();
-
-                    // --- 渲染評分結果 ---
-                    let resultHTML = `<h2>評分結果 (總分: ${resultData.totalScore} / 8)</h2>`;
-                    resultData.results.forEach((res, index) => {
-                        resultHTML += `<div class="result-item" style="margin-bottom: 15px; padding: 10px; border: 1px solid ${res.success && res.isCorrect ? '#5cb85c' : '#d9534f'}; border-radius: 4px;">`;
-                        resultHTML += `<p><strong>第 ${index + 1} 題 (得分: ${res.score !== undefined ? res.score : 'N/A'})</strong></p>`;
-                        if (res.success) {
-                            resultHTML += `<p>你的答案 (識別結果): <span style="font-weight: bold; color: ${res.isCorrect ? 'green' : 'red'};">${res.recognizedText || '[識別失敗]'}</span></p>`;
-                            if (!res.isCorrect && res.correctAnswer) {
-                                resultHTML += `<p>正確答案: <span style="font-weight: bold;">${res.correctAnswer}</span></p>`;
-                                // TODO: 在此處或下方加入 AI 生成的針對性解析
-                            }
-                            if(res.isCorrect) {
-                                 resultHTML += `<p style="color: green;">回答正確！</p>`;
-                            }
-                             if (res.r2Key === null && res.message === "Blank answer") {
-                                resultHTML += `<p style="color: orange;">你提交了空白答案。</p>`;
-                            }
-                        } else {
-                            resultHTML += `<p style="color: red;">處理失敗: ${res.error || '未知錯誤'}</p>`;
-                        }
-                         resultHTML += `</div>`;
-                    });
-
-                    // TODO: 在這裡添加 AI 生成的總體斥罵/評價
-                    if (resultData.totalScore < 8) {
-                         resultHTML += `<p style="color: red; font-weight: bold; margin-top: 20px; text-align:center;">總分 ${resultData.totalScore}！離滿分差 ${8 - resultData.totalScore} 分！高考默寫一分都不能丟！回去好好練！</p>`;
-                         // 在這裡觸發 AI 生成更詳細的斥罵
-                    } else {
-                        resultHTML += `<p style="color: green; font-weight: bold; margin-top: 20px; text-align:center;">不錯，拿到滿分了！繼續保持！</p>`;
-                    }
-
-                    resultDiv.innerHTML = resultHTML;
-                    // --- 渲染結束 ---
-
-                } catch (error) {
-                    console.error('提交答案失敗:', error);
-                    resultDiv.textContent = `提交答案失敗: ${error.message}`;
-                } finally {
-                    setLoadingState(submitBtn, false, '提交答案');
+                }
+                const questionId = currentQuestions[index].id;
+                if (pad.isEmpty()) {
+                    answersData.push({ questionId: questionId, imageDataUrl: null });
+                } else {
+                    const dataUrl = pad.toDataURL('image/png');
+                    answersData.push({ questionId: questionId, imageDataUrl: dataUrl });
                 }
             });
+
+             if (answersData.length !== currentQuestions.length) {
+                 console.error("收集到的答案數量與題目數量不匹配！");
+                 resultDiv.textContent = '提交失敗：內部錯誤，請重試。';
+                 setLoadingState(submitBtn, false, '提交答案');
+                 return;
+             }
+
+            try {
+                const response = await fetch('/api/submit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ answers: answersData }),
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: `HTTP 錯誤！狀態: ${response.status} ${response.statusText}` }));
+                    throw new Error(errorData.error || `HTTP 錯誤！狀態: ${response.status}`);
+                }
+
+                const resultData = await response.json();
+
+                // --- 渲染評分結果 ---
+                let resultHTML = `<h2>評分結果 (總分: ${resultData.totalScore} / 8)</h2>`;
+                resultData.results.forEach((res, index) => {
+                    const boxColor = res.success ? (res.isCorrect ? '#5cb85c' : '#d9534f') : '#777'; // 成功綠，失敗紅，錯誤灰
+                    resultHTML += `<div class="result-item" style="border-color: ${boxColor};">`;
+                    resultHTML += `<p><strong>第 ${index + 1} 題 (得分: ${res.score !== undefined ? res.score : 'N/A'})</strong></p>`;
+                    if (res.success) {
+                        resultHTML += `<p>你的答案 (識別結果): <span style="font-weight: bold; color: ${res.isCorrect ? 'green' : 'red'};">${res.recognizedText || '[識別失敗]'}</span></p>`;
+                        if (!res.isCorrect && res.correctAnswer && res.correctAnswer !== "[未找到標準答案]") {
+                            resultHTML += `<p>正確答案: <span style="font-weight: bold;">${res.correctAnswer}</span></p>`;
+                        }
+                        if(res.isCorrect) {
+                             resultHTML += `<p style="color: green;">回答正確！</p>`;
+                        }
+                         if (res.r2Key === null && res.message === "Blank answer") {
+                            resultHTML += `<p style="color: orange;">你提交了空白答案。</p>`;
+                        }
+                        // 如果有 OCR 錯誤信息，也顯示出來
+                        if (res.error && (res.error.includes("OCR") || res.error.includes("解析"))) {
+                             resultHTML += `<p style="color: magenta;">AI識別提示: ${res.error}</p>`;
+                        }
+                    } else {
+                        resultHTML += `<p style="color: red;">處理失敗: ${res.error || '未知錯誤'}</p>`;
+                    }
+                     resultHTML += `</div>`;
+                });
+
+                // 基礎斥罵
+                if (resultData.totalScore < 8) {
+                     resultHTML += `<p style="color: red; font-weight: bold; margin-top: 20px; text-align:center; font-size: 1.1em;">總分 ${resultData.totalScore}！離滿分差 ${8 - resultData.totalScore} 分！高考默寫一分都不能丟！回去好好練！</p>`;
+                     // 在這裡觸發 AI 生成更詳細的斥罵
+                } else {
+                    resultHTML += `<p style="color: green; font-weight: bold; margin-top: 20px; text-align:center; font-size: 1.1em;">不錯，拿到滿分了！繼續保持！</p>`;
+                }
+
+                resultDiv.innerHTML = resultHTML;
+
+            } catch (error) {
+                console.error('提交答案失敗:', error);
+                resultDiv.textContent = `提交答案失敗: ${error.message}`;
+            } finally {
+                setLoadingState(submitBtn, false, '提交答案');
+            }
+        });
+
+        // --- **窗口大小變化監聽器** ---
+        let resizeTimeout;
+        window.addEventListener("resize", () => {
+             clearTimeout(resizeTimeout);
+             resizeTimeout = setTimeout(() => {
+                 console.log("Window resized, adjusting canvases...");
+                 const canvases = questionListDiv.querySelectorAll('canvas');
+                 canvases.forEach(canvas => {
+                     if (canvas.offsetWidth > 0 && canvas.offsetHeight > 0) {
+                        resizeCanvas(canvas);
+                     }
+                 });
+             }, 250);
+        });
 
     </script>
 </body>
