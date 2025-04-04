@@ -112,115 +112,147 @@
         }
 
 
-        // --- Canvas 交互邏輯 ---
         function initializeCanvas(canvasElement, index) {
             const ctx = canvasElement.getContext('2d');
-            let points = []; // 存儲當前筆畫的點
-            let currentStroke = null; // 存儲當前筆畫的 SVG 路徑點
+            let points = []; // 存儲當前筆畫的點 [x, y, pressure]
+            let currentStroke = null; // 存儲 perfect-freehand 計算出的當前筆畫輪廓點
             let isDrawing = false;
 
             // 設置 Canvas 繪圖屬性
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
-            ctx.strokeStyle = drawOptions.color;
-            ctx.lineWidth = drawOptions.size; // 基礎寬度
+            ctx.fillStyle = drawOptions.color; // 使用 fillStyle 因為我們要填充路徑
 
-             // 清除 Canvas
-             function clearCanvas() {
-                 ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-                 canvasInstances[index].strokes = []; // 清空筆畫數據
-                 console.log(`Canvas ${canvasElement.id} cleared`);
-             }
+            // 清除 Canvas
+            function clearCanvas() {
+                const rect = canvasElement.getBoundingClientRect(); // 需要獲取尺寸來清除
+                ctx.clearRect(0, 0, rect.width / (window.devicePixelRatio || 1), rect.height / (window.devicePixelRatio || 1)); // 清除時使用 CSS 像素單位
+                canvasInstances[index].strokes = []; // 清空筆畫數據
+                console.log(`Canvas ${canvasElement.id} cleared`);
+            }
 
-             // 添加筆畫數據
-             function addStroke() {
+             // 添加筆畫數據到存儲
+             function addStrokeToSavedStrokes() {
                  if (currentStroke) {
-                     canvasInstances[index].strokes.push(currentStroke);
-                     currentStroke = null; // 重置當前筆畫
+                      // 注意：我們應該保存原始的 points，而不是計算後的 stroke
+                      // 因為 resize 時需要用原始 points 重新計算 stroke
+                      // 但為了簡化，我們先保存計算後的 stroke，resize 時重繪它
+                      // 更優方案是保存 points，並在 redraw 時重新計算所有 stroke
+                     canvasInstances[index].strokes.push(currentStroke); // 保存計算後的輪廓點
+                     currentStroke = null;
                  }
              }
 
-            // 重新繪製所有筆畫
-            function redrawAllStrokes() {
-                ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-                canvasInstances[index].strokes.forEach(stroke => {
-                    // 使用 perfect-freehand 獲取 SVG 路徑點
-                    const pathData = perfectFreehand.getSvgPathFromStroke(stroke);
-                    // 創建 Path2D 對象並繪製填充
-                    const path = new Path2D(pathData);
-                    ctx.fillStyle = drawOptions.color;
-                    ctx.fill(path);
-                });
-                 // 如果當前正在繪製，也要繪製當前筆畫
-                if (currentStroke) {
-                    const pathData = perfectFreehand.getSvgPathFromStroke(currentStroke);
-                    const path = new Path2D(pathData);
-                    ctx.fillStyle = drawOptions.color;
-                    ctx.fill(path);
-                }
+            // 繪製單個筆畫 (使用填充)
+            function drawStroke(strokeToDraw) {
+                if (!strokeToDraw || strokeToDraw.length < 1) return;
+                const pathData = perfectFreehand.getSvgPathFromStroke(strokeToDraw);
+                const path = new Path2D(pathData);
+                ctx.fill(path);
             }
 
-            // 事件處理
+            // 重新繪製所有已保存的筆畫和當前筆畫
+            function redrawAllStrokes() {
+                // 清除整個 Canvas (使用 CSS 像素單位計算清除範圍)
+                const dpr = window.devicePixelRatio || 1;
+                ctx.clearRect(0, 0, canvasElement.width / dpr, canvasElement.height / dpr);
+
+                // 繪製所有已保存的筆畫
+                canvasInstances[index].strokes.forEach(savedStroke => {
+                    drawStroke(savedStroke);
+                });
+                // 繪製當前正在畫的筆畫
+                drawStroke(currentStroke);
+            }
+
+            // --- **修改後的事件處理，使用 getBoundingClientRect** ---
+            function getPoint(e) {
+                const rect = canvasElement.getBoundingClientRect();
+                // 對於觸摸事件，使用第一個觸點
+                const touch = e.touches ? e.touches[0] : e;
+                const x = touch.clientX - rect.left;
+                const y = touch.clientY - rect.top;
+                // 如果 pressure 不可用，提供默認值 0.5
+                const pressure = touch.pressure !== undefined ? touch.pressure : (e.pointerType === 'pen' ? e.pressure : 0.5);
+                // console.log(x,y, pressure); // 調試坐標和壓力
+                return [x, y, pressure];
+            }
+
             function handlePointerDown(e) {
-                e.preventDefault(); // 確保阻止默認行為
+                // e.preventDefault(); // 阻止滾動等，如果 touch-action:none 不夠的話
                 isDrawing = true;
-                points = [[e.offsetX, e.offsetY, e.pressure ?? 0.5]]; // 開始新筆畫
-                currentStroke = null; // 清除舊的 SVG 數據
-                redrawAllStrokes(); // 重繪以顯示起始點
+                points = [getPoint(e)]; // 使用新函數獲取坐標
+                currentStroke = null; // 開始新筆畫，清除舊的計算結果
+                redrawAllStrokes(); // 繪製起始點
             }
 
             function handlePointerMove(e) {
                 if (!isDrawing) return;
-                e.preventDefault();
-                points.push([e.offsetX, e.offsetY, e.pressure ?? 0.5]);
+                // e.preventDefault();
+                points.push(getPoint(e)); // 添加新點
 
-                // 使用 perfect-freehand 計算平滑後的筆畫點
+                // 使用 perfect-freehand 計算平滑後的筆畫輪廓點
                 currentStroke = perfectFreehand.getStroke(points, drawOptions);
-
-                redrawAllStrokes(); // 重繪所有筆畫（包括當前正在畫的）
+                redrawAllStrokes(); // 重繪以顯示當前進度
             }
 
             function handlePointerUp(e) {
+                // e.preventDefault();
                 if (!isDrawing) return;
-                e.preventDefault();
                 isDrawing = false;
-                // points.push([e.offsetX, e.offsetY, e.pressure ?? 0.5]); // 可以選擇是否記錄抬筆點
+                 // points.push(getPoint(e)); // 可以選擇是否記錄抬筆點
 
-                 // 計算最終筆畫並保存
-                 currentStroke = perfectFreehand.getStroke(points, drawOptions);
-                 addStroke(); // 將完成的筆畫添加到數組
+                // 計算最終筆畫輪廓並保存
+                 if (points.length > 0) {
+                     currentStroke = perfectFreehand.getStroke(points, { ...drawOptions, last: true }); // 使用 last: true
+                     addStrokeToSavedStrokes(); // 保存計算結果
+                 } else {
+                     currentStroke = null; // 如果沒有點，則沒有筆畫
+                 }
 
-                points = []; // 清空當前點記錄
-                 // currentStroke 在 redrawAllStrokes 中會被清除
-                 redrawAllStrokes(); // 確保最後一筆畫完整顯示
+                points = []; // 清空點記錄以備下次使用
+                redrawAllStrokes(); // 繪製最終的完整筆畫
             }
 
-            // 綁定事件 (同時支持鼠標和觸摸)
+            // 綁定事件 (Pointer 事件兼容鼠標和觸摸)
             canvasElement.addEventListener('pointerdown', handlePointerDown);
             canvasElement.addEventListener('pointermove', handlePointerMove);
             canvasElement.addEventListener('pointerup', handlePointerUp);
             canvasElement.addEventListener('pointerleave', handlePointerUp); // 離開畫布也算結束
 
-             // 找到對應的清除按鈕
-             const clearButton = canvasElement.closest('.answer-wrapper').querySelector('.clear-btn');
-             if (clearButton) {
-                 clearButton.addEventListener('click', (event) => {
-                      event.preventDefault();
-                     clearCanvas();
-                 });
-             }
+            // 清除按鈕
+            const clearButton = canvasElement.closest('.answer-wrapper').querySelector('.clear-btn');
+            if (clearButton) {
+                clearButton.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    clearCanvas();
+                });
+            }
 
-            // 保存實例信息
+            // 保存實例信息 (包括用於導出的方法)
             canvasInstances[index] = {
                 canvas: canvasElement,
                 ctx: ctx,
-                strokes: [], // 存儲所有完成的筆畫數據 [[x,y,p], ...]
+                strokes: [], // 存儲計算後的筆畫輪廓點 [[x,y], ...]
                 clear: clearCanvas,
                 isEmpty: () => canvasInstances[index].strokes.length === 0,
-                toDataURL: (type = 'image/png') => { // 提供導出方法
-                     // 重新繪製確保內容最新（防止 resize 後沒重繪）
-                     redrawAllStrokes();
-                     return canvasElement.toDataURL(type);
+                toDataURL: (type = 'image/png') => {
+                    // 重新繪製確保內容最新
+                    redrawAllStrokes();
+                    // 導出時可能需要創建一個新的 Canvas 來繪製白色背景
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = canvasElement.width;
+                    tempCanvas.height = canvasElement.height;
+                    const tempCtx = tempCanvas.getContext('2d');
+                    // 繪製白色背景
+                    tempCtx.fillStyle = 'white';
+                    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+                    // 將當前內容繪製到臨時 Canvas 上
+                    // 注意：需要反向縮放，因為 drawImage 使用的是圖像原始像素
+                     const ratio = Math.max(window.devicePixelRatio || 1, 1);
+                    tempCtx.drawImage(canvasElement, 0, 0, canvasElement.width / ratio, canvasElement.height / ratio);
+
+                    return tempCanvas.toDataURL(type); // 從臨時 Canvas 導出
                 }
             };
 
