@@ -140,7 +140,7 @@
         ctx.clearRect(0, 0, width, height);
         savedStrokesPoints.forEach(points => {
           if (points.length > 0) {
-            const stroke = perfectFreehand.getStroke(points, drawOptionsLast);
+            const stroke = getStroke(points, drawOptionsLast);
             const path = new Path2D(getSvgPathFromStroke(stroke));
             ctx.fill(path);
           }
@@ -161,7 +161,7 @@
 
       function drawStrokeOutline(points, options) {
         if (!points || points.length === 0) return;
-        const stroke = perfectFreehand.getStroke(points, options);
+        const stroke = getStroke(points, options);
         const path = new Path2D(getSvgPathFromStroke(stroke));
         ctx.fill(path);
       }
@@ -217,7 +217,7 @@
         isPointerDown = false;
         if (currentPoints.length > 0) {
           savedStrokesPoints.push([...currentPoints]);
-          const stroke = perfectFreehand.getStroke(currentPoints, drawOptionsLast);
+          const stroke = getStroke(currentPoints, drawOptionsLast);
           const path = new Path2D(getSvgPathFromStroke(stroke));
           redrawCanvas();
           ctx.fill(path);
@@ -259,7 +259,7 @@
           tempCtx.fillStyle = drawOptions.color;
           savedStrokesPoints.forEach(points => {
             if (points.length > 0) {
-              const stroke = perfectFreehand.getStroke(points, drawOptionsLast);
+              const stroke = getStroke(points, drawOptionsLast);
               const path = new Path2D(getSvgPathFromStroke(stroke));
               tempCtx.fill(path);
             }
@@ -425,7 +425,7 @@
             instance.ctx.clearRect(0, 0, instance.canvas.offsetWidth, instance.canvas.offsetHeight);
             instance.strokesPoints.forEach(points => {
               if (points.length > 0) {
-                const stroke = perfectFreehand.getStroke(points, drawOptionsLast);
+                const stroke = getStroke(points, drawOptionsLast);
                 const path = new Path2D(getSvgPathFromStroke(stroke));
                 instance.ctx.fill(path);
               }
