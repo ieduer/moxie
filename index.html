@@ -12,15 +12,22 @@
         .question-item { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px dashed #eee; }
         .question-item:last-child { border-bottom: none; }
         pre { background-color: #f4f4f4; padding: 10px; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; font-size: 0.9em; }
-        button { padding: 12px 20px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 1em; transition: background-color 0.2s ease; }
-        button:hover { background-color: #0056b3; }
+        button { padding: 12px 20px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 1em; transition: background-color 0.2s ease; margin-left: 5px; }
+        button:hover:not(:disabled) { background-color: #0056b3; }
         button:disabled { background-color: #ccc; cursor: not-allowed; }
         .button-group { display: flex; gap: 10px; margin-bottom: 20px; justify-content: center;}
         h2 { margin-top: 0; color: #0056b3; }
-        .placeholder-answer { color: #888; font-style: italic; margin-top: 10px; padding: 10px; background: #efefef; border-radius: 4px;}
-        .loading { font-style: italic; color: #555; }
         .underline-blank { text-decoration: underline; color: #aaa; display: inline-block; min-width: 10em; text-align: center;} /* 給下劃線留空 */
+        .answer-wrapper { margin-top: 10px; border: 1px solid #ddd; border-radius: 4px; background-color: #fff; }
+        .canvas-container { position: relative; width: 100%; height: 150px; /* 調整畫板高度 */ border-bottom: 1px solid #eee;}
+        canvas { display: block; width: 100%; height: 100%; background-color: #fff; border-radius: 4px 4px 0 0; }
+        .controls { padding: 5px; text-align: right; }
+        .clear-btn { background-color: #f0ad4e; font-size: 0.9em; padding: 5px 10px;}
+        .clear-btn:hover { background-color: #ec971f; }
+        .loading { font-style: italic; color: #555; }
     </style>
+    <!-- 引入 Signature Pad 庫 -->
+    <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
 </head>
 <body>
     <h1>墨力全開 - AI 默寫教練</h1>
@@ -35,8 +42,7 @@
     <div id="questions" style="display: none;">
         <h2>請默寫以下內容 (共 8 分):</h2>
         <div id="question-list"></div>
-        <!-- 未來添加手寫輸入區 -->
-        <button id="submit-btn" style="margin-top: 20px; width: 100%;" disabled>提交答案 (請先完成手寫)</button>
+        <button id="submit-btn" style="margin-top: 20px; width: 100%;" disabled>提交答案</button>
     </div>
     <div id="result" style="display: none;"></div>
 
@@ -49,6 +55,9 @@
         const checkBackendBtn = document.getElementById('check-backend-btn');
         const submitBtn = document.getElementById('submit-btn');
 
+        let signaturePads = []; // 用於存儲所有 signature_pad 實例
+        let currentQuestions = []; // 存儲當前題目數據
+
         function setLoadingState(button, isLoading, defaultText) {
             if (isLoading) {
                 button.disabled = true;
@@ -59,17 +68,52 @@
             }
         }
 
+        // 調整 Canvas 大小以適應容器
+        function resizeCanvas(canvas) {
+            const ratio =  Math.max(window.devicePixelRatio || 1, 1);
+            canvas.width = canvas.offsetWidth * ratio;
+            canvas.height = canvas.offsetHeight * ratio;
+            canvas.getContext("2d").scale(ratio, ratio);
+        }
+
+        // 初始化 Signature Pad
+        function initializeSignaturePads() {
+            signaturePads = []; // 清空舊的實例
+            const canvases = questionListDiv.querySelectorAll('canvas');
+            canvases.forEach((canvas, index) => {
+                // resizeCanvas(canvas); // 初始調整一次
+                const signaturePad = new SignaturePad(canvas, {
+                    penColor: "rgb(0, 0, 0)", // 設置筆觸顏色為黑色
+                    backgroundColor: 'rgb(255, 255, 255)' // 確保背景是白色
+                });
+                signaturePads.push(signaturePad);
+
+                // 找到對應的清除按鈕並綁定事件
+                const clearButton = canvas.closest('.answer-wrapper').querySelector('.clear-btn');
+                if (clearButton) {
+                    clearButton.addEventListener('click', () => {
+                        signaturePad.clear();
+                    });
+                }
+            });
+             // 處理窗口大小變化時 Canvas 的重繪問題 (可選優化)
+             // window.addEventListener("resize", () => {
+             //     canvases.forEach((canvas, index) => {
+             //         resizeCanvas(canvas);
+             //         signaturePads[index].clear(); // 清除內容避免變形
+             //     });
+             // });
+        }
+
         // 檢查後端狀態
         checkBackendBtn.addEventListener('click', async () => {
             setLoadingState(checkBackendBtn, true, '檢查後端狀態');
             statusDiv.textContent = '正在檢查後端狀態...';
-            resultDiv.style.display = 'none'; // 隱藏結果區
-            questionsDiv.style.display = 'none'; // 隱藏題目區
+            resultDiv.style.display = 'none';
+            questionsDiv.style.display = 'none';
             try {
-                const response = await fetch('/api/hello'); // 相對路徑調用 Pages Function
-                if (!response.ok) {
-                    throw new Error(`HTTP 錯誤！狀態: ${response.status} ${response.statusText}`);
-                }
+                const response = await fetch('/api/hello');
+                if (!response.ok) throw new Error(`HTTP 錯誤！狀態: ${response.status} ${response.statusText}`);
                 const data = await response.json();
                 statusDiv.innerHTML = `後端狀態檢查成功！<pre>${JSON.stringify(data, null, 2)}</pre>`;
             } catch (error) {
@@ -84,55 +128,110 @@
         getQuestionBtn.addEventListener('click', async () => {
             setLoadingState(getQuestionBtn, true, '開始挑戰');
             statusDiv.textContent = '正在從後端獲取題目...';
-            resultDiv.style.display = 'none'; // 隱藏結果區
-            questionsDiv.style.display = 'none'; // 先隱藏
-            questionListDiv.innerHTML = ''; // 清空舊題目
+            resultDiv.style.display = 'none';
+            questionsDiv.style.display = 'none';
+            questionListDiv.innerHTML = '';
+            currentQuestions = []; // 清空當前題目
 
             try {
-                const response = await fetch('/api/question'); // 相對路徑調用 Pages Function
-                 if (!response.ok) {
-                    throw new Error(`HTTP 錯誤！狀態: ${response.status} ${response.statusText}`);
-                }
+                const response = await fetch('/api/question');
+                if (!response.ok) throw new Error(`HTTP 錯誤！狀態: ${response.status} ${response.statusText}`);
                 const questions = await response.json();
 
                 if (questions && questions.length > 0) {
+                    currentQuestions = questions; // 保存題目數據
                     statusDiv.textContent = '題目獲取成功！請作答。';
                     questions.forEach((q, index) => {
                         const item = document.createElement('div');
                         item.classList.add('question-item');
-                        // 將連續的下劃線替換為一個帶樣式的 span
                         const formattedQuestion = q.question.replace(/_+/g, '<span class="underline-blank"> </span>');
                         item.innerHTML = `
                             <p><strong>${index + 1}. (${q.topic || '2分'})</strong></p>
                             <p>${formattedQuestion}</p>
-                            <div class="placeholder-answer" id="answer-area-${q.id}">
-                                <em>在此處手寫答案 (功能待實現)</em>
+                            <div class="answer-wrapper">
+                                <div class="canvas-container">
+                                    <canvas id="canvas-${q.id}"></canvas>
+                                </div>
+                                <div class="controls">
+                                    <button class="clear-btn" type="button">清除</button>
+                                </div>
                             </div>
                         `;
                         questionListDiv.appendChild(item);
                     });
-                    questionsDiv.style.display = 'block'; // 顯示題目區
-                    submitBtn.disabled = false; // 獲取題目後啟用提交按鈕 (暫時)
+                    initializeSignaturePads(); // 初始化所有 Canvas
+                    questionsDiv.style.display = 'block';
+                    submitBtn.disabled = false;
                 } else {
-                     statusDiv.textContent = '未能獲取有效題目。後端返回空數據。';
+                    statusDiv.textContent = '未能獲取有效題目。後端返回空數據。';
                 }
             } catch (error) {
                 console.error('獲取題目失敗:', error);
                 statusDiv.textContent = `獲取題目失敗: ${error.message}`;
             } finally {
-                 setLoadingState(getQuestionBtn, false, '開始挑戰');
+                setLoadingState(getQuestionBtn, false, '開始挑戰');
             }
         });
 
-        // 提交按鈕 (目前僅提示)
-        submitBtn.addEventListener('click', () => {
-            resultDiv.textContent = '提交功能和手寫識別正在努力開發中...';
+        // 提交答案
+        submitBtn.addEventListener('click', async () => {
+            setLoadingState(submitBtn, true, '提交答案');
+            resultDiv.textContent = '正在提交答案並處理...';
             resultDiv.style.display = 'block';
-            setLoadingState(submitBtn, true, '提交答案 (請先完成手寫)'); // 模擬處理中
-            // 這裡未來會觸發手寫內容收集、上傳、後端處理
-            setTimeout(() => { // 模擬延遲後恢復
-                 setLoadingState(submitBtn, false, '提交答案 (請先完成手寫)');
-            }, 1500);
+
+            const answersData = [];
+            let hasEmpty = false;
+            signaturePads.forEach((pad, index) => {
+                if (pad.isEmpty()) {
+                    // 你可以選擇提示用戶或直接提交空白
+                    // console.warn(`第 ${index + 1} 題答案為空`);
+                    // hasEmpty = true; // 如果不允許提交空白，可以用這個標記
+                    answersData.push({
+                        questionId: currentQuestions[index].id,
+                        imageDataUrl: null // 表示空白答案
+                    });
+                } else {
+                    // 獲取 PNG 格式的 Base64 數據 URL
+                    const dataUrl = pad.toDataURL('image/png');
+                    answersData.push({
+                        questionId: currentQuestions[index].id,
+                        imageDataUrl: dataUrl
+                    });
+                }
+            });
+
+            // if (hasEmpty) {
+            //     alert("請完成所有題目再提交！");
+            //     setLoadingState(submitBtn, false, '提交答案');
+            //     resultDiv.style.display = 'none';
+            //     return;
+            // }
+
+            try {
+                const response = await fetch('/api/submit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ answers: answersData }), // 將包含所有答案的數組發送
+                });
+
+                if (!response.ok) {
+                     const errorData = await response.json().catch(() => ({ error: `HTTP 錯誤！狀態: ${response.status} ${response.statusText}` }));
+                    throw new Error(errorData.error || `HTTP 錯誤！狀態: ${response.status}`);
+                }
+
+                const result = await response.json();
+                // 暫時只顯示後端返回的原始信息
+                resultDiv.innerHTML = `提交成功！後端響應：<pre>${JSON.stringify(result, null, 2)}</pre><p>（評分和解析功能待實現）</p>`;
+                // TODO: 在這裡處理更詳細的評分、解析和斥罵展示
+
+            } catch (error) {
+                console.error('提交答案失敗:', error);
+                resultDiv.textContent = `提交答案失敗: ${error.message}`;
+            } finally {
+                setLoadingState(submitBtn, false, '提交答案');
+            }
         });
 
     </script>
