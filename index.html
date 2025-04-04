@@ -38,8 +38,6 @@
     .result-item { margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
     .result-item p { margin: 5px 0; }
   </style>
-  <!-- 引入 perfect-freehand 庫 -->
-  <script src="https://cdn.jsdelivr.net/npm/perfect-freehand@1.2.0/dist/perfect-freehand.min.js"></script>
 </head>
 <body>
   <h1>墨力全開 - AI 默寫教練</h1>
@@ -61,7 +59,10 @@
   </div>
   <div id="result" style="display: none;"></div>
 
-  <script>
+  <!-- 使用 ES module 方式引入 perfect-freehand -->
+  <script type="module">
+    import { getStroke } from 'https://cdn.jsdelivr.net/npm/perfect-freehand@1.2.0/dist/perfect-freehand.esm.js';
+
     // --- 全局變量與常量 ---
     const statusDiv = document.getElementById('status');
     const questionsDiv = document.getElementById('questions');
