@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>墨力全開 - AI 默寫教練</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; padding: 20px; max-width: 800px; margin: 0 auto; background-color: #f9f9f9; }
+        h1 { text-align: center; color: #333; }
+        strong { color: #d9534f; } /* 強調紅色 */
+        #status, #questions, #result { margin-top: 20px; padding: 15px; border: 1px solid #ccc; border-radius: 8px; background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .question-item { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px dashed #eee; }
+        .question-item:last-child { border-bottom: none; }
+        pre { background-color: #f4f4f4; padding: 10px; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; font-size: 0.9em; }
+        button { padding: 12px 20px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 1em; transition: background-color 0.2s ease; }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        .button-group { display: flex; gap: 10px; margin-bottom: 20px; justify-content: center;}
+        h2 { margin-top: 0; color: #0056b3; }
+        .placeholder-answer { color: #888; font-style: italic; margin-top: 10px; padding: 10px; background: #efefef; border-radius: 4px;}
+        .loading { font-style: italic; color: #555; }
+        .underline-blank { text-decoration: underline; color: #aaa; display: inline-block; min-width: 10em; text-align: center;} /* 給下劃線留空 */
+    </style>
+</head>
+<body>
+    <h1>墨力全開 - AI 默寫教練</h1>
+    <p style="text-align: center;"><strong>目標：高考默寫 8 分，必須拿滿！一分都不能少！</strong></p>
+
+    <div class="button-group">
+        <button id="get-question-btn">開始挑戰</button>
+        <button id="check-backend-btn">檢查後端狀態</button>
+    </div>
+
+    <div id="status">狀態：等待操作...</div>
+    <div id="questions" style="display: none;">
+        <h2>請默寫以下內容 (共 8 分):</h2>
+        <div id="question-list"></div>
+        <!-- 未來添加手寫輸入區 -->
+        <button id="submit-btn" style="margin-top: 20px; width: 100%;" disabled>提交答案 (請先完成手寫)</button>
+    </div>
+    <div id="result" style="display: none;"></div>
+
+    <script>
+        const statusDiv = document.getElementById('status');
+        const questionsDiv = document.getElementById('questions');
+        const questionListDiv = document.getElementById('question-list');
+        const resultDiv = document.getElementById('result');
+        const getQuestionBtn = document.getElementById('get-question-btn');
+        const checkBackendBtn = document.getElementById('check-backend-btn');
+        const submitBtn = document.getElementById('submit-btn');
+
+        function setLoadingState(button, isLoading, defaultText) {
+            if (isLoading) {
+                button.disabled = true;
+                button.textContent = '處理中...';
+            } else {
+                button.disabled = false;
+                button.textContent = defaultText;
+            }
+        }
+
+        // 檢查後端狀態
+        checkBackendBtn.addEventListener('click', async () => {
+            setLoadingState(checkBackendBtn, true, '檢查後端狀態');
+            statusDiv.textContent = '正在檢查後端狀態...';
+            resultDiv.style.display = 'none'; // 隱藏結果區
+            questionsDiv.style.display = 'none'; // 隱藏題目區
+            try {
+                const response = await fetch('/api/hello'); // 相對路徑調用 Pages Function
+                if (!response.ok) {
+                    throw new Error(`HTTP 錯誤！狀態: ${response.status} ${response.statusText}`);
+                }
+                const data = await response.json();
+                statusDiv.innerHTML = `後端狀態檢查成功！<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                console.error('檢查後端失敗:', error);
+                statusDiv.textContent = `檢查後端失敗: ${error.message}`;
+            } finally {
+                setLoadingState(checkBackendBtn, false, '檢查後端狀態');
+            }
+        });
+
+        // 獲取題目
+        getQuestionBtn.addEventListener('click', async () => {
+            setLoadingState(getQuestionBtn, true, '開始挑戰');
+            statusDiv.textContent = '正在從後端獲取題目...';
+            resultDiv.style.display = 'none'; // 隱藏結果區
+            questionsDiv.style.display = 'none'; // 先隱藏
+            questionListDiv.innerHTML = ''; // 清空舊題目
+
+            try {
+                const response = await fetch('/api/question'); // 相對路徑調用 Pages Function
+                 if (!response.ok) {
+                    throw new Error(`HTTP 錯誤！狀態: ${response.status} ${response.statusText}`);
+                }
+                const questions = await response.json();
+
+                if (questions && questions.length > 0) {
+                    statusDiv.textContent = '題目獲取成功！請作答。';
+                    questions.forEach((q, index) => {
+                        const item = document.createElement('div');
+                        item.classList.add('question-item');
+                        // 將連續的下劃線替換為一個帶樣式的 span
+                        const formattedQuestion = q.question.replace(/_+/g, '<span class="underline-blank"> </span>');
+                        item.innerHTML = `
+                            <p><strong>${index + 1}. (${q.topic || '2分'})</strong></p>
+                            <p>${formattedQuestion}</p>
+                            <div class="placeholder-answer" id="answer-area-${q.id}">
+                                <em>在此處手寫答案 (功能待實現)</em>
+                            </div>
+                        `;
+                        questionListDiv.appendChild(item);
+                    });
+                    questionsDiv.style.display = 'block'; // 顯示題目區
+                    submitBtn.disabled = false; // 獲取題目後啟用提交按鈕 (暫時)
+                } else {
+                     statusDiv.textContent = '未能獲取有效題目。後端返回空數據。';
+                }
+            } catch (error) {
+                console.error('獲取題目失敗:', error);
+                statusDiv.textContent = `獲取題目失敗: ${error.message}`;
+            } finally {
+                 setLoadingState(getQuestionBtn, false, '開始挑戰');
+            }
+        });
+
+        // 提交按鈕 (目前僅提示)
+        submitBtn.addEventListener('click', () => {
+            resultDiv.textContent = '提交功能和手寫識別正在努力開發中...';
+            resultDiv.style.display = 'block';
+            setLoadingState(submitBtn, true, '提交答案 (請先完成手寫)'); // 模擬處理中
+            // 這裡未來會觸發手寫內容收集、上傳、後端處理
+            setTimeout(() => { // 模擬延遲後恢復
+                 setLoadingState(submitBtn, false, '提交答案 (請先完成手寫)');
+            }, 1500);
+        });
+
+    </script>
+</body>
+</html>

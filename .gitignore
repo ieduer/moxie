@@ -1,0 +1,9 @@
+# .gitignore
+node_modules/
+.wrangler/
+.DS_Store
+*.log
+
+# 可能的本地開發文件夾
+dist/
+.cache/

@@ -1,0 +1,30 @@
+{
+    "compilerOptions": {
+      // --- 基本選項 ---
+      "target": "ESNext", // 編譯目標為最新的 ECMAScript
+      "module": "ESNext", // 使用 ES 模塊系統
+      "moduleResolution": "node", // 模塊解析策略
+      "esModuleInterop": true, // 允許從 CommonJS 模塊導入
+      "strict": true, // 開啟所有嚴格類型檢查選項
+      "skipLibCheck": true, // 跳過對庫文件的類型檢查 (加快編譯)
+      "forceConsistentCasingInFileNames": true, // 強制文件名大小寫一致
+      "resolveJsonModule": true, // 允許導入 JSON 文件
+  
+      // --- Cloudflare Workers/Pages 相關 ---
+      "lib": ["ESNext"], // **重要:** 只包含 ESNext 庫，避免包含標準 DOM 庫，防止 Response 類型衝突
+      "types": ["@cloudflare/workers-types"], // **重要:** 明確指定使用 Cloudflare 的類型定義
+  
+      // --- 可選 (如果未來使用 Hono 等框架) ---
+      // "jsx": "react-jsx",
+      // "jsxImportSource": "hono/jsx"
+    },
+    // --- 指定要編譯的文件範圍 ---
+    "include": [
+      "functions/**/*.ts" // 只包含 functions 目錄下的 TS 文件
+      // 如果未來有其他 TS 文件，也加在這裡
+    ],
+    // --- 排除的文件/文件夾 ---
+    "exclude": [
+      "node_modules"
+    ]
+  }
