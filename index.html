@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>墨力全開 - AI 默寫教練</title>
+    <title>AI 默寫教練</title>
     <style>
         body { font-family: sans-serif; line-height: 1.6; padding: 20px; max-width: 800px; margin: 0 auto; background-color: #f9f9f9; }
         h1 { text-align: center; color: #333; }
@@ -30,7 +30,7 @@
     <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
 </head>
 <body>
-    <h1>墨力全開 - AI 默寫教練</h1>
+    <h1>AI 默寫教練</h1>
     <p style="text-align: center;"><strong>目標：高考默寫 8 分，必須拿滿！一分都不能少！</strong></p>
 
     <div class="button-group">
@@ -173,66 +173,93 @@
             }
         });
 
-        // 提交答案
-        submitBtn.addEventListener('click', async () => {
-            setLoadingState(submitBtn, true, '提交答案');
-            resultDiv.textContent = '正在提交答案並處理...';
-            resultDiv.style.display = 'block';
+// 提交答案
+submitBtn.addEventListener('click', async () => {
+                setLoadingState(submitBtn, true, '提交答案');
+                resultDiv.innerHTML = '<div class="loading">正在提交答案並等待 AI 評分...</div>'; // 使用 innerHTML 添加樣式
+                resultDiv.style.display = 'block';
 
-            const answersData = [];
-            let hasEmpty = false;
-            signaturePads.forEach((pad, index) => {
-                if (pad.isEmpty()) {
-                    // 你可以選擇提示用戶或直接提交空白
-                    // console.warn(`第 ${index + 1} 題答案為空`);
-                    // hasEmpty = true; // 如果不允許提交空白，可以用這個標記
-                    answersData.push({
-                        questionId: currentQuestions[index].id,
-                        imageDataUrl: null // 表示空白答案
-                    });
-                } else {
-                    // 獲取 PNG 格式的 Base64 數據 URL
-                    const dataUrl = pad.toDataURL('image/png');
-                    answersData.push({
-                        questionId: currentQuestions[index].id,
-                        imageDataUrl: dataUrl
-                    });
-                }
-            });
+                const answersData = [];
+                let hasEmpty = false;
+                signaturePads.forEach((pad, index) => {
+                    // 檢查 currentQuestions[index] 是否存在
+                    if (!currentQuestions || !currentQuestions[index]) {
+                        console.error(`無法獲取第 ${index + 1} 題的題目信息`);
+                        return; // 跳過這個無效的題目
+                    }
+                    const questionId = currentQuestions[index].id;
 
-            // if (hasEmpty) {
-            //     alert("請完成所有題目再提交！");
-            //     setLoadingState(submitBtn, false, '提交答案');
-            //     resultDiv.style.display = 'none';
-            //     return;
-            // }
-
-            try {
-                const response = await fetch('/api/submit', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ answers: answersData }), // 將包含所有答案的數組發送
+                    if (pad.isEmpty()) {
+                        answersData.push({ questionId: questionId, imageDataUrl: null });
+                    } else {
+                        // 獲取 PNG 格式的 Base64 數據 URL (質量可以調整，但 PNG 無損更適合 OCR)
+                        const dataUrl = pad.toDataURL('image/png');
+                        answersData.push({ questionId: questionId, imageDataUrl: dataUrl });
+                    }
                 });
 
-                if (!response.ok) {
-                     const errorData = await response.json().catch(() => ({ error: `HTTP 錯誤！狀態: ${response.status} ${response.statusText}` }));
-                    throw new Error(errorData.error || `HTTP 錯誤！狀態: ${response.status}`);
+                 if (answersData.length !== currentQuestions.length) {
+                    console.error("收集到的答案數量與題目數量不匹配！");
+                    resultDiv.textContent = '提交失敗：內部錯誤，請重試。';
+                    setLoadingState(submitBtn, false, '提交答案');
+                    return;
+                 }
+
+                try {
+                    const response = await fetch('/api/submit', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ answers: answersData }),
+                    });
+
+                    if (!response.ok) {
+                         const errorData = await response.json().catch(() => ({ error: `HTTP 錯誤！狀態: ${response.status} ${response.statusText}` }));
+                        throw new Error(errorData.error || `HTTP 錯誤！狀態: ${response.status}`);
+                    }
+
+                    const resultData = await response.json();
+
+                    // --- 渲染評分結果 ---
+                    let resultHTML = `<h2>評分結果 (總分: ${resultData.totalScore} / 8)</h2>`;
+                    resultData.results.forEach((res, index) => {
+                        resultHTML += `<div class="result-item" style="margin-bottom: 15px; padding: 10px; border: 1px solid ${res.success && res.isCorrect ? '#5cb85c' : '#d9534f'}; border-radius: 4px;">`;
+                        resultHTML += `<p><strong>第 ${index + 1} 題 (得分: ${res.score !== undefined ? res.score : 'N/A'})</strong></p>`;
+                        if (res.success) {
+                            resultHTML += `<p>你的答案 (識別結果): <span style="font-weight: bold; color: ${res.isCorrect ? 'green' : 'red'};">${res.recognizedText || '[識別失敗]'}</span></p>`;
+                            if (!res.isCorrect && res.correctAnswer) {
+                                resultHTML += `<p>正確答案: <span style="font-weight: bold;">${res.correctAnswer}</span></p>`;
+                                // TODO: 在此處或下方加入 AI 生成的針對性解析
+                            }
+                            if(res.isCorrect) {
+                                 resultHTML += `<p style="color: green;">回答正確！</p>`;
+                            }
+                             if (res.r2Key === null && res.message === "Blank answer") {
+                                resultHTML += `<p style="color: orange;">你提交了空白答案。</p>`;
+                            }
+                        } else {
+                            resultHTML += `<p style="color: red;">處理失敗: ${res.error || '未知錯誤'}</p>`;
+                        }
+                         resultHTML += `</div>`;
+                    });
+
+                    // TODO: 在這裡添加 AI 生成的總體斥罵/評價
+                    if (resultData.totalScore < 8) {
+                         resultHTML += `<p style="color: red; font-weight: bold; margin-top: 20px; text-align:center;">總分 ${resultData.totalScore}！離滿分差 ${8 - resultData.totalScore} 分！高考默寫一分都不能丟！回去好好練！</p>`;
+                         // 在這裡觸發 AI 生成更詳細的斥罵
+                    } else {
+                        resultHTML += `<p style="color: green; font-weight: bold; margin-top: 20px; text-align:center;">不錯，拿到滿分了！繼續保持！</p>`;
+                    }
+
+                    resultDiv.innerHTML = resultHTML;
+                    // --- 渲染結束 ---
+
+                } catch (error) {
+                    console.error('提交答案失敗:', error);
+                    resultDiv.textContent = `提交答案失敗: ${error.message}`;
+                } finally {
+                    setLoadingState(submitBtn, false, '提交答案');
                 }
-
-                const result = await response.json();
-                // 暫時只顯示後端返回的原始信息
-                resultDiv.innerHTML = `提交成功！後端響應：<pre>${JSON.stringify(result, null, 2)}</pre><p>（評分和解析功能待實現）</p>`;
-                // TODO: 在這裡處理更詳細的評分、解析和斥罵展示
-
-            } catch (error) {
-                console.error('提交答案失敗:', error);
-                resultDiv.textContent = `提交答案失敗: ${error.message}`;
-            } finally {
-                setLoadingState(submitBtn, false, '提交答案');
-            }
-        });
+            });
 
     </script>
 </body>
