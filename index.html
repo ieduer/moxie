@@ -100,13 +100,13 @@
             }
         }
 
-        // --- **修改後的 initializeSignaturePads 函數** ---
-        function initializeSignaturePads() {
-            signaturePads = [];
+// --- **再次修改後的 initializeSignaturePads 函數** ---
+function initializeSignaturePads() {
+            signaturePads = []; // 清空舊的實例
             const canvases = questionListDiv.querySelectorAll('canvas');
 
             canvases.forEach((canvas, index) => {
-                // --- **關鍵：在初始化 SignaturePad 之前調用 resizeCanvas** ---
+                // 在初始化 SignaturePad 之前調用 resizeCanvas (保持不變)
                 try {
                      if (canvas.offsetWidth === 0 || canvas.offsetHeight === 0) {
                          console.warn(`Canvas ${canvas.id} has zero dimensions, skipping resize for now.`);
@@ -117,16 +117,36 @@
                      console.error(`Error resizing canvas ${canvas.id}:`, e);
                 }
 
+                // *** 修改 SignaturePad 參數 ***
                 const signaturePad = new SignaturePad(canvas, {
                     penColor: "rgb(0, 0, 0)",
                     backgroundColor: 'rgb(255, 255, 255)',
+                    // --- **嘗試更激進的參數以提高響應性** ---
+                    throttle: 8,      // 減少節流時間 (原為 16)
+                    minDistance: 0,   // 強制記錄更近的點 (原為默認值，可能>0)
+                    // 可以進一步減小 throttle 試試，比如 4 或 0，但 0 可能性能開銷大
                 });
                 signaturePads.push(signaturePad);
 
+                // --- **添加顯式事件監聽器以阻止默認行為** ---
+                // 雖然 CSS 的 touch-action: none 應該做了這個，但加一層保險
+                // 使用 passive: false 確保 preventDefault 生效
+                canvas.addEventListener('touchstart', function(event) {
+                    // console.log('touchstart prevented default'); // 調試日誌
+                    event.preventDefault();
+                }, { passive: false });
+
+                canvas.addEventListener('touchmove', function(event) {
+                    // console.log('touchmove prevented default'); // 調試日誌
+                    event.preventDefault();
+                }, { passive: false });
+                // touchend 通常不需要 preventDefault
+
+                // 清除按鈕邏輯 (保持不變)
                 const clearButton = canvas.closest('.answer-wrapper').querySelector('.clear-btn');
                 if (clearButton) {
                     clearButton.addEventListener('click', (event) => {
-                         event.preventDefault();
+                         event.preventDefault(); // 確保按鈕點擊本身沒問題
                         signaturePad.clear();
                     });
                 }
