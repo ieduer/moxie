@@ -21,16 +21,12 @@
     .underline-blank { text-decoration: underline; color: #aaa; display: inline-block; min-width: 10em; text-align: center; }
     .answer-wrapper { margin-top: 10px; border: 1px solid #ddd; border-radius: 4px; background-color: #fff; }
     .canvas-container { position: relative; width: 100%; height: 180px; border-bottom: 1px solid #eee; }
-    canvas {
-      display: block;
-      width: 100%;
-      height: 100%;
-      border-radius: 4px 4px 0 0;
-      touch-action: none; /* 必須保留 */
-      cursor: crosshair;
-      /* Debug: 暫時加上邊框，調試用 */
-      border: 1px dashed red;
-    }
+    /* 兩層 canvas 都放在容器中，覆蓋層採絕對定位 */
+    .canvas-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; touch-action: none; }
+    /* 底層 canvas 自動填充容器 */
+    .base-canvas { z-index: 1; }
+    /* 覆蓋層 canvas 用於臨時顯示 */
+    .overlay-canvas { z-index: 2; pointer-events: none; }
     .controls { padding: 5px; text-align: right; }
     .clear-btn { background-color: #f0ad4e; font-size: 0.9em; padding: 5px 10px; }
     .clear-btn:hover { background-color: #ec971f; }
@@ -59,24 +55,12 @@
   </div>
   <div id="result" style="display: none;"></div>
 
-  <!-- 使用 ES module 方式引入 perfect-freehand -->
+  <!-- 使用 ES module 引入 perfect‑freehand -->
   <script type="module">
     import { getStroke } from 'https://cdn.jsdelivr.net/npm/perfect-freehand@1.2.0/dist/perfect-freehand.esm.js';
 
-    // --- 全局變量與常量 ---
-    const statusDiv = document.getElementById('status');
-    const questionsDiv = document.getElementById('questions');
-    const questionListDiv = document.getElementById('question-list');
-    const resultDiv = document.getElementById('result');
-    const getQuestionBtn = document.getElementById('get-question-btn');
-    const checkBackendBtn = document.getElementById('check-backend-btn');
-    const submitBtn = document.getElementById('submit-btn');
-
-    let currentQuestions = [];
-    let canvasInstances = []; // 儲存各 canvas 實例
-
-    // perfect-freehand 繪圖選項
-    const drawOptions = {
+    // 預設繪圖選項
+    const defaultOptions = {
       size: 3,
       thinning: 0.6,
       smoothing: 0.5,
@@ -84,20 +68,155 @@
       color: 'black',
       last: false,
     };
-    const drawOptionsLast = { ...drawOptions, last: true };
 
-    // --- 工具函數 ---
-    function setLoadingState(button, isLoading, defaultText) {
-      if (isLoading) {
-        button.disabled = true;
-        button.textContent = '處理中...';
-      } else {
-        button.disabled = false;
-        button.textContent = defaultText;
+    // 模塊化的手寫 canvas 類，採用分層 canvas 設計
+    class HandwritingCanvas {
+      constructor(container, options = {}) {
+        this.options = { ...defaultOptions, ...options };
+        this.container = container;
+        this.strokes = [];         // 已完成筆跡
+        this.currentStroke = [];   // 當前筆跡點序列
+        this.initCanvases();
+        this.bindEvents();
+        this.resize(); // 初始調整尺寸
+      }
+
+      // 在容器中創建兩個 canvas：底層與覆蓋層
+      initCanvases() {
+        // 創建底層 canvas 用於存放已完成筆跡
+        this.baseCanvas = document.createElement('canvas');
+        this.baseCanvas.classList.add('canvas-layer', 'base-canvas');
+        // 創建覆蓋層 canvas 用於臨時繪製當前筆跡
+        this.overlayCanvas = document.createElement('canvas');
+        this.overlayCanvas.classList.add('canvas-layer', 'overlay-canvas');
+
+        // 將兩個 canvas 添加到容器中
+        this.container.style.position = 'relative';
+        this.container.appendChild(this.baseCanvas);
+        this.container.appendChild(this.overlayCanvas);
+
+        this.baseCtx = this.baseCanvas.getContext('2d');
+        this.overlayCtx = this.overlayCanvas.getContext('2d');
+      }
+
+      // 根據容器尺寸設置 canvas 尺寸（考慮 DPR）
+      resize() {
+        const dpr = window.devicePixelRatio || 1;
+        const rect = this.container.getBoundingClientRect();
+        [this.baseCanvas.width, this.baseCanvas.height] = [rect.width * dpr, rect.height * dpr];
+        [this.overlayCanvas.width, this.overlayCanvas.height] = [rect.width * dpr, rect.height * dpr];
+
+        // 重設 transform
+        [this.baseCtx, this.overlayCtx].forEach(ctx => {
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.scale(dpr, dpr);
+        });
+        // 重新繪製底層筆跡
+        this.redrawBase();
+      }
+
+      // 將已完成筆跡重繪到底層 canvas
+      redrawBase() {
+        const rect = this.container.getBoundingClientRect();
+        this.baseCtx.clearRect(0, 0, rect.width, rect.height);
+        this.strokes.forEach(points => {
+          const stroke = getStroke(points, { ...this.options, last: true });
+          const pathData = getSvgPathFromStroke(stroke);
+          const path = new Path2D(pathData);
+          this.baseCtx.fillStyle = this.options.color;
+          this.baseCtx.fill(path);
+        });
+      }
+
+      // 繪製覆蓋層，顯示當前筆跡
+      redrawOverlay() {
+        const rect = this.container.getBoundingClientRect();
+        this.overlayCtx.clearRect(0, 0, rect.width, rect.height);
+        if (this.currentStroke.length > 0) {
+          const stroke = getStroke(this.currentStroke, this.options);
+          const pathData = getSvgPathFromStroke(stroke);
+          const path = new Path2D(pathData);
+          this.overlayCtx.fillStyle = this.options.color;
+          this.overlayCtx.fill(path);
+        }
+      }
+
+      // 取得事件在 canvas 上的相對坐標（物理像素）
+      getPoint(e) {
+        const rect = this.container.getBoundingClientRect();
+        let x, y, pressure;
+        if (e.clientX !== undefined && e.clientY !== undefined) {
+          x = (e.clientX - rect.left) * (this.overlayCanvas.width / rect.width);
+          y = (e.clientY - rect.top) * (this.overlayCanvas.height / rect.height);
+          pressure = e.pressure !== undefined && e.pressure > 0 ? e.pressure : 0.5;
+        } else if (e.touches && e.touches.length > 0) {
+          const touch = e.touches[0];
+          x = (touch.clientX - rect.left) * (this.overlayCanvas.width / rect.width);
+          y = (touch.clientY - rect.top) * (this.overlayCanvas.height / rect.height);
+          pressure = 0.5;
+        } else {
+          return null;
+        }
+        return [x, y, pressure];
+      }
+
+      bindEvents() {
+        // 為了更平滑，僅在 container 上捕獲 pointer 事件
+        this.pointerDownHandler = (e) => {
+          if (e.button !== 0 && e.pointerType === 'mouse') return;
+          e.preventDefault();
+          this.currentStroke = [];
+          const pt = this.getPoint(e);
+          if (pt) this.currentStroke.push(pt);
+          this.isDrawing = true;
+          this.redrawOverlay();
+        };
+
+        this.pointerMoveHandler = (e) => {
+          if (!this.isDrawing) return;
+          const pt = this.getPoint(e);
+          if (pt) {
+            this.currentStroke.push(pt);
+            // 使用 requestAnimationFrame 控制繪製頻率
+            window.requestAnimationFrame(() => this.redrawOverlay());
+          }
+        };
+
+        this.pointerUpHandler = (e) => {
+          if (!this.isDrawing) return;
+          this.isDrawing = false;
+          // 將當前筆跡保存到已完成筆跡中
+          if (this.currentStroke.length > 0) {
+            this.strokes.push([...this.currentStroke]);
+            this.redrawBase();
+          }
+          // 清空覆蓋層
+          this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
+        };
+
+        // 添加事件監聽
+        this.container.addEventListener('pointerdown', this.pointerDownHandler, { passive: false });
+        this.container.addEventListener('pointermove', this.pointerMoveHandler, { passive: false });
+        window.addEventListener('pointerup', this.pointerUpHandler);
+        this.container.addEventListener('pointercancel', this.pointerUpHandler);
+      }
+
+      // 清除所有筆跡
+      clear() {
+        this.strokes = [];
+        this.currentStroke = [];
+        const rect = this.container.getBoundingClientRect();
+        this.baseCtx.clearRect(0, 0, rect.width, rect.height);
+        this.overlayCtx.clearRect(0, 0, rect.width, rect.height);
+      }
+
+      // 將底層 canvas轉成 DataURL（用於提交答案）
+      toDataURL(type = 'image/png') {
+        return this.baseCanvas.toDataURL(type);
       }
     }
 
-    // 將 SVG 路徑數據轉換成字串，用於 Path2D
+    // 與之前相同的工具函數：將筆畫數據轉換成 SVG 路徑字串
     function getSvgPathFromStroke(stroke) {
       if (!stroke || stroke.length < 1) return '';
       const d = stroke.reduce(
@@ -111,166 +230,28 @@
       return `${d.join(' ')} Z`;
     }
 
-    // --- Canvas 初始化與交互邏輯 ---
-    function initializeCanvas(canvasElement, index) {
-      const ctx = canvasElement.getContext('2d');
-      let currentPoints = [];
-      let savedStrokesPoints = [];
-      let isPointerDown = false;
+    // 以下為獲取題目、初始化手寫區、提交答案等邏輯（結構與之前大致相同）
+    const statusDiv = document.getElementById('status');
+    const questionsDiv = document.getElementById('questions');
+    const questionListDiv = document.getElementById('question-list');
+    const resultDiv = document.getElementById('result');
+    const getQuestionBtn = document.getElementById('get-question-btn');
+    const checkBackendBtn = document.getElementById('check-backend-btn');
+    const submitBtn = document.getElementById('submit-btn');
 
-      // --- 設置 Canvas 尺寸與縮放 ---
-      function resizeCanvas(canvas, index) {
-        if (!canvas) return;
-        const dpr = window.devicePixelRatio || 1;
-        const width = canvas.offsetWidth;
-        const height = canvas.offsetHeight;
+    let currentQuestions = [];
+    let handwritingInstances = []; // 儲存每個題目的 HandwritingCanvas 實例
 
-        // 設定實際畫布尺寸（物理像素）
-        canvas.width = width * dpr;
-        canvas.height = height * dpr;
-
-        // 重設變形，然後 scale
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.scale(dpr, dpr);
-
-        ctx.fillStyle = drawOptions.color;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-
-        // 清除並重繪所有筆畫
-        ctx.clearRect(0, 0, width, height);
-        savedStrokesPoints.forEach(points => {
-          if (points.length > 0) {
-            const stroke = getStroke(points, drawOptionsLast);
-            const path = new Path2D(getSvgPathFromStroke(stroke));
-            ctx.fill(path);
-          }
-        });
-
-        console.log(`Canvas resized (${canvas.id}) to ${canvas.width}×${canvas.height} with DPR ${dpr}`);
+    function setLoadingState(button, isLoading, defaultText) {
+      if (isLoading) {
+        button.disabled = true;
+        button.textContent = '處理中...';
+      } else {
+        button.disabled = false;
+        button.textContent = defaultText;
       }
-
-      resizeCanvas(canvasElement, index);
-
-      function clearCanvas() {
-        const dpr = window.devicePixelRatio || 1;
-        ctx.clearRect(0, 0, canvasElement.width / dpr, canvasElement.height / dpr);
-        savedStrokesPoints = [];
-        currentPoints = [];
-        canvasInstances[index].strokesPoints = savedStrokesPoints;
-      }
-
-      function drawStrokeOutline(points, options) {
-        if (!points || points.length === 0) return;
-        const stroke = getStroke(points, options);
-        const path = new Path2D(getSvgPathFromStroke(stroke));
-        ctx.fill(path);
-      }
-
-      function redrawCanvas() {
-        const dpr = window.devicePixelRatio || 1;
-        ctx.clearRect(0, 0, canvasElement.width / dpr, canvasElement.height / dpr);
-        savedStrokesPoints.forEach(points => drawStrokeOutline(points, drawOptions));
-        drawStrokeOutline(currentPoints, drawOptions);
-      }
-
-      // --- 取得相對於 Canvas 的正確坐標（考慮物理像素與 CSS 像素轉換） ---
-      function getPointRelativeToCanvas(event) {
-        const rect = canvasElement.getBoundingClientRect();
-        let x, y, pressure;
-        if (event.clientX !== undefined && event.clientY !== undefined) {
-          x = (event.clientX - rect.left) * (canvasElement.width / rect.width);
-          y = (event.clientY - rect.top) * (canvasElement.height / rect.height);
-          pressure = event.pressure !== undefined && event.pressure > 0 ? event.pressure : 0.5;
-        } else if (event.touches && event.touches.length > 0) {
-          const touch = event.touches[0];
-          x = (touch.clientX - rect.left) * (canvasElement.width / rect.width);
-          y = (touch.clientY - rect.top) * (canvasElement.height / rect.height);
-          pressure = 0.5;
-        } else {
-          return null;
-        }
-        return [x, y, pressure];
-      }
-
-      function handlePointerDown(event) {
-        if (event.button !== 0 && event.pointerType === 'mouse') return;
-        event.preventDefault();
-        isPointerDown = true;
-        const point = getPointRelativeToCanvas(event);
-        if (point) {
-          currentPoints = [point];
-          redrawCanvas();
-        }
-      }
-
-      function handlePointerMove(event) {
-        if (!isPointerDown) return;
-        const point = getPointRelativeToCanvas(event);
-        if (point) {
-          currentPoints.push(point);
-          redrawCanvas();
-        }
-      }
-
-      function handlePointerUp(event) {
-        if (!isPointerDown) return;
-        isPointerDown = false;
-        if (currentPoints.length > 0) {
-          savedStrokesPoints.push([...currentPoints]);
-          const stroke = getStroke(currentPoints, drawOptionsLast);
-          const path = new Path2D(getSvgPathFromStroke(stroke));
-          redrawCanvas();
-          ctx.fill(path);
-        }
-        currentPoints = [];
-      }
-
-      canvasElement.addEventListener('pointerdown', handlePointerDown, { passive: false });
-      canvasElement.addEventListener('pointermove', handlePointerMove, { passive: false });
-      window.addEventListener('pointerup', handlePointerUp);
-      canvasElement.addEventListener('pointerleave', (e) => { if (isPointerDown) handlePointerUp(e); });
-
-      // 綁定清除按鈕
-      const clearButton = canvasElement.closest('.answer-wrapper').querySelector('.clear-btn');
-      if (clearButton) {
-        clearButton.addEventListener('click', (event) => {
-          event.preventDefault();
-          clearCanvas();
-        });
-      }
-
-      // 保存 Canvas 實例資訊
-      canvasInstances[index] = {
-        canvas: canvasElement,
-        ctx: ctx,
-        strokesPoints: savedStrokesPoints,
-        clear: clearCanvas,
-        isEmpty: () => savedStrokesPoints.length === 0,
-        toDataURL: (type = 'image/png') => {
-          const tempCanvas = document.createElement('canvas');
-          const dpr = window.devicePixelRatio || 1;
-          tempCanvas.width = canvasElement.width;
-          tempCanvas.height = canvasElement.height;
-          const tempCtx = tempCanvas.getContext('2d');
-          tempCtx.fillStyle = 'white';
-          tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-          tempCtx.setTransform(1, 0, 0, 1, 0, 0);
-          tempCtx.scale(dpr, dpr);
-          tempCtx.fillStyle = drawOptions.color;
-          savedStrokesPoints.forEach(points => {
-            if (points.length > 0) {
-              const stroke = getStroke(points, drawOptionsLast);
-              const path = new Path2D(getSvgPathFromStroke(stroke));
-              tempCtx.fill(path);
-            }
-          });
-          return tempCanvas.toDataURL(type);
-        }
-      };
     }
 
-    // --- 取得題目、提交答案與其他邏輯 ---
     getQuestionBtn.addEventListener('click', async () => {
       setLoadingState(getQuestionBtn, true, '開始挑戰');
       statusDiv.textContent = '正在從後端獲取題目...';
@@ -278,18 +259,15 @@
       questionsDiv.style.display = 'none';
       questionListDiv.innerHTML = '';
       currentQuestions = [];
-      canvasInstances = []; // 重置
+      handwritingInstances = [];
 
       try {
         const response = await fetch('/api/question');
         if (!response.ok) throw new Error(`HTTP 錯誤！狀態: ${response.status} ${response.statusText}`);
         const questions = await response.json();
-
         if (questions && questions.length > 0) {
           currentQuestions = questions;
           statusDiv.textContent = '題目獲取成功！請作答。';
-          canvasInstances = new Array(questions.length);
-
           questions.forEach((q, index) => {
             const item = document.createElement('div');
             item.classList.add('question-item');
@@ -298,9 +276,7 @@
               <p><strong>${index + 1}. (${q.topic || '2分'})</strong></p>
               <p>${formattedQuestion}</p>
               <div class="answer-wrapper">
-                <div class="canvas-container">
-                  <canvas id="canvas-${q.id}"></canvas>
-                </div>
+                <div class="canvas-container" id="container-${q.id}"></div>
                 <div class="controls">
                   <button class="clear-btn" type="button">清除</button>
                 </div>
@@ -309,18 +285,25 @@
             questionListDiv.appendChild(item);
           });
 
-          // 使用 requestAnimationFrame 確保元素渲染完成後再初始化 Canvas
+          // 初始化每個題目的手寫區，並綁定清除按鈕
           setTimeout(() => {
-            requestAnimationFrame(() => {
-              questions.forEach((q, index) => {
-                const canvasElement = questionListDiv.querySelector(`#canvas-${q.id}`);
-                if (canvasElement) {
-                  initializeCanvas(canvasElement, index);
+            currentQuestions.forEach((q, index) => {
+              const container = document.getElementById(`container-${q.id}`);
+              if (container) {
+                const hwCanvas = new HandwritingCanvas(container);
+                handwritingInstances.push(hwCanvas);
+                // 綁定清除按鈕
+                const clearBtn = container.parentElement.querySelector('.clear-btn');
+                if (clearBtn) {
+                  clearBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    hwCanvas.clear();
+                  });
                 }
-              });
-              questionsDiv.style.display = 'block';
-              submitBtn.disabled = false;
+              }
             });
+            questionsDiv.style.display = 'block';
+            submitBtn.disabled = false;
           }, 50);
 
         } else {
@@ -335,7 +318,6 @@
     });
 
     checkBackendBtn.addEventListener('click', async () => {
-      // 此處可加入檢查後端狀態的邏輯
       alert('檢查後端狀態功能尚未實現。');
     });
 
@@ -345,13 +327,14 @@
       resultDiv.style.display = 'block';
 
       const answersData = [];
-      canvasInstances.forEach((instance, index) => {
+      handwritingInstances.forEach((instance, index) => {
         if (!currentQuestions || !currentQuestions[index] || !instance) {
           console.error(`數據不一致或實例未找到 for index ${index}`);
           return;
         }
         const questionId = currentQuestions[index].id;
-        if (instance.isEmpty()) {
+        // 若筆跡為空，返回 null；否則使用底層 canvas 的圖片數據
+        if (instance.strokes.length === 0) {
           answersData.push({ questionId: questionId, imageDataUrl: null });
         } else {
           const dataUrl = instance.toDataURL('image/png');
@@ -372,14 +355,11 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ answers: answersData }),
         });
-
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ error: `HTTP 錯誤！狀態: ${response.status} ${response.statusText}` }));
           throw new Error(errorData.error || `HTTP 錯誤！狀態: ${response.status}`);
         }
-
         const resultData = await response.json();
-
         let resultHTML = `<h2>評分結果 (總分: ${resultData.totalScore} / 8)</h2>`;
         resultData.results.forEach((res, index) => {
           const boxColor = res.success ? (res.isCorrect ? '#5cb85c' : '#d9534f') : '#777';
@@ -412,27 +392,12 @@
       }
     });
 
-    // --- 窗口尺寸調整監聽 ---
+    // 當窗口尺寸改變時，重置所有手寫區尺寸
     let resizeTimeout;
     window.addEventListener("resize", () => {
       clearTimeout(resizeTimeout);
       resizeTimeout = setTimeout(() => {
-        console.log("Window resized, adjusting canvases...");
-        canvasInstances.forEach((instance, idx) => {
-          if (instance && instance.canvas.offsetWidth > 0 && instance.canvas.offsetHeight > 0) {
-            // 重新設定尺寸並重繪
-            instance.ctx.setTransform(1, 0, 0, 1, 0, 0);
-            instance.ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
-            instance.ctx.clearRect(0, 0, instance.canvas.offsetWidth, instance.canvas.offsetHeight);
-            instance.strokesPoints.forEach(points => {
-              if (points.length > 0) {
-                const stroke = getStroke(points, drawOptionsLast);
-                const path = new Path2D(getSvgPathFromStroke(stroke));
-                instance.ctx.fill(path);
-              }
-            });
-          }
-        });
+        handwritingInstances.forEach(instance => instance.resize());
       }, 250);
     });
   </script>
