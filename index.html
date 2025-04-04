@@ -55,9 +55,9 @@
   </div>
   <div id="result" style="display: none;"></div>
 
-  <!-- 使用 ES module 方式引入 perfect‑freehand -->
+  <!-- 使用 ES module 方式引入 perfect‑freehand，改用 esm.sh CDN -->
   <script type="module">
-    import { getStroke } from 'https://cdn.jsdelivr.net/npm/perfect-freehand@1.2.0/dist/perfect-freehand.esm.js';
+    import { getStroke } from 'https://esm.sh/perfect-freehand@1.2.0';
 
     // 工具函數：將筆畫數據轉換為 SVG 路徑字串（用於 Path2D）
     function getSvgPathFromStroke(stroke) {
@@ -191,12 +191,11 @@
           const pt = this.getPoint(e);
           if (pt) {
             this.currentStroke.push(pt);
-            // 使用 requestAnimationFrame 保證繪製流暢
             window.requestAnimationFrame(() => this.redrawOverlay());
           }
         };
 
-        // pointerup（以及 pointercancel）：結束筆跡，commit 到底層並清空覆蓋層
+        // pointerup/pointercancel：結束筆跡，commit 到底層並清空覆蓋層
         this.pointerUpHandler = (e) => {
           if (!this.isDrawing) return;
           this.isDrawing = false;
@@ -208,7 +207,6 @@
           this.overlayCtx.clearRect(0, 0, rect.width, rect.height);
         };
 
-        // 添加事件監聽
         this.container.addEventListener('pointerdown', this.pointerDownHandler, { passive: false });
         this.container.addEventListener('pointermove', this.pointerMoveHandler, { passive: false });
         window.addEventListener('pointerup', this.pointerUpHandler);
@@ -240,7 +238,7 @@
     const submitBtn = document.getElementById('submit-btn');
 
     let currentQuestions = [];
-    let handwritingInstances = []; // 保存每個題目的 HandwritingCanvas 實例
+    let handwritingInstances = [];
 
     function setLoadingState(button, isLoading, defaultText) {
       if (isLoading) {
@@ -285,7 +283,6 @@
             questionListDiv.appendChild(item);
           });
 
-          // 初始化每個題目的手寫區，並綁定清除按鈕
           setTimeout(() => {
             currentQuestions.forEach((q, index) => {
               const container = document.getElementById(`container-${q.id}`);
