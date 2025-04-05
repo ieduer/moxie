@@ -6,10 +6,11 @@ import zhentiData from '../../data/zhenti.json'; // Keep for potential future re
 // Assuming kaoshifanwei.json has the structure { "文言文": [...], "诗词曲": [...] }
 import kaoshifanweiRawData from '../../data/kaoshifanwei.json';
 
-// --- Constants ---
+// --- Constants --- // << UPDATE 1: Constants Updated >>
 const KV_EXPIRATION_TTL_SECONDS = 3600; // 1 hour
-const GEMINI_VISION_MODEL = "gemini-1.5-pro-latest"; // Or "gemini-pro-vision"
-const GEMINI_TEXT_MODEL = "gemini-pro"; // Standard text model for feedback
+// ** 使用用戶指定的模型名稱 **
+const GEMINI_VISION_MODEL = "gemini-2.0-flash-thinking-exp-01-21"; // User specified vision model
+const GEMINI_TEXT_MODEL = "gemini-2.0-flash-thinking-exp-01-21";    // User specified text model (曾報錯, 可能需改回 1.5-pro-latest)
 const GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/";
 const MAX_QUESTIONS_PER_SET = 4; // Default target number of questions
 const MIN_LINES_FOR_QUESTION = 2; // Minimum consecutive lines needed after splitting content
@@ -162,7 +163,7 @@ function flattenKaoshiFanweiData(rawData: KaoshiFanweiRawStructure): KaoshiFanwe
 }
 
 
-// --- Question Generation Logic ---
+// --- **FALLBACK** Question Generation Logic --- // << UPDATE 3: Renamed functions/variables for Fallback >>
 
 // Defines the signature for a function that creates a question from lines
 type QuestionPattern = (lines: string[], sourceInfo: string) => QuestionInfo | null;
@@ -209,18 +210,16 @@ const patternFillPrevious: QuestionPattern = (lines, sourceInfo) => {
     return null;
 };
 
-// Add more patterns here if needed (e.g., write two consecutive lines)
-// const patternWriteTwoConsecutive: QuestionPattern = ...
-
-// Array of available patterns to randomly choose from
-const availablePatterns: QuestionPattern[] = [
+// Array of available patterns to randomly choose from for the fallback
+const availablePatternsFallback: QuestionPattern[] = [ // Renamed from availablePatterns
     patternFillNext,
     patternFillPrevious,
     // patternWriteTwoConsecutive, // Add more complex patterns if implemented
 ];
 
-// Function to generate a set of questions using the patterns and flattened data
-function generateQuestionSetFromFanwei(fanwei: KaoshiFanweiItem[], count: number): QuestionInfo[] {
+// **FALLBACK** Function to generate a set of questions using patterns (renamed from generateQuestionSetFromFanwei)
+function generateQuestionSetFromFanweiFallback(fanwei: KaoshiFanweiItem[], count: number): QuestionInfo[] {
+    console.log(`Executing fallback question generation for ${count} questions.`); // Added log for clarity
     const generatedQuestions: QuestionInfo[] = [];
     // Use a Set to track used *sourceItem.id* to avoid picking the same poem/article twice in one set
     const usedSourceItemIds = new Set<string>();
@@ -230,7 +229,7 @@ function generateQuestionSetFromFanwei(fanwei: KaoshiFanweiItem[], count: number
     while (generatedQuestions.length < count && attempts < maxAttempts) {
         attempts++;
         if (fanwei.length === 0) {
-             console.warn("Cannot generate more questions, fanwei data is empty.");
+             console.warn("Fallback generation stopped: fanwei data is empty.");
              break;
         }
 
@@ -247,15 +246,15 @@ function generateQuestionSetFromFanwei(fanwei: KaoshiFanweiItem[], count: number
         // Ensure there are enough lines following the start index for the pattern
         if (sourceItem.content.length < MIN_LINES_FOR_QUESTION) {
             // This check should be redundant due to flattening logic, but good failsafe
-            console.warn(`Skipping source item ${sourceItem.id} during generation due to insufficient lines: ${sourceItem.content.length}`);
+            console.warn(`Fallback skipping source item ${sourceItem.id} during generation due to insufficient lines: ${sourceItem.content.length}`);
             usedSourceItemIds.add(sourceItem.id); // Mark as used even if skipped due to length
             continue;
         }
         const randomLineIndex = Math.floor(Math.random() * (sourceItem.content.length - (MIN_LINES_FOR_QUESTION - 1)));
         const selectedLines = sourceItem.content.slice(randomLineIndex, randomLineIndex + MIN_LINES_FOR_QUESTION);
 
-        // Randomly select a pattern to apply
-        const randomPattern = availablePatterns[Math.floor(Math.random() * availablePatterns.length)];
+        // Randomly select a pattern to apply from the FALLBACK patterns
+        const randomPattern = availablePatternsFallback[Math.floor(Math.random() * availablePatternsFallback.length)]; // Use renamed array
 
         // Construct source information string
         const sourceInfo = `${sourceItem.category} - 《${sourceItem.title}》${sourceItem.author ? ` - ${sourceItem.author}` : ''}`;
@@ -270,17 +269,18 @@ function generateQuestionSetFromFanwei(fanwei: KaoshiFanweiItem[], count: number
                  // Mark this source item ID as used for this set
                  usedSourceItemIds.add(sourceItem.id);
             } else {
-                 console.log(`Skipping generated question due to duplicate answer: ${newQuestion.answer}`);
+                 console.log(`Fallback skipping generated question due to duplicate answer: ${newQuestion.answer}`);
             }
         }
     }
 
      // Log if fewer questions were generated than requested
      if (generatedQuestions.length < count) {
-          console.warn(`Could only generate ${generatedQuestions.length} unique questions out of ${count} requested.`);
+          console.warn(`Fallback could only generate ${generatedQuestions.length} unique questions out of ${count} requested.`);
      }
     return generatedQuestions;
 }
+
 
 // --- Gemini API Call Function ---
 
@@ -380,61 +380,151 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             return new Response(JSON.stringify(dataInfo), { headers: baseHeaders });
         }
 
-        // API Endpoint to start a new question set
+        // --- **AI-Powered**: Start Question Set API --- // << UPDATE 2: Replaced start_set logic >>
         if (apiPath === 'start_set' && request.method === 'GET') {
-             console.log("Processing /api/start_set request");
-             if (kaoshifanweiData.length === 0) {
-                  console.error("Cannot generate questions: Flattened kaoshifanwei data is empty.");
-                  throw new Error("處理後的考試範圍數據為空，無法出題。");
-             }
+            console.log("Processing /api/start_set request using AI generation");
+            if (kaoshifanweiData.length === 0) { throw new Error("處理後的考試範圍數據為空，無法出題。"); }
 
             const setId = crypto.randomUUID();
-            // Generate questions using the flattened data
-            const generatedQuestions = generateQuestionSetFromFanwei(kaoshifanweiData, MAX_QUESTIONS_PER_SET);
+            const generatedQuestions: QuestionInfo[] = [];
+            const generationPromises: Promise<void>[] = []; // Store promises for AI calls
 
-            // Handle cases where not enough unique questions could be generated
+            // Filter sources
+            const guwenSources = kaoshifanweiData.filter(item => item.category === '文言文');
+            const gushiSources = kaoshifanweiData.filter(item => item.category === '诗词曲');
+
+            if (guwenSources.length < 2 || gushiSources.length < 2) { throw new Error(`數據不足，無法選取足夠的文言文 (${guwenSources.length}) 或詩詞曲 (${gushiSources.length}) 來源。`); }
+
+            // Select sources
+            const selectedGuwen = getRandomItems(guwenSources, 2);
+            const selectedGushi = getRandomItems(gushiSources, 2);
+            const selectedSources = [...selectedGuwen, ...selectedGushi]; // 4 sources total
+
+            // Generate questions concurrently using AI
+            selectedSources.forEach(sourceItem => {
+                 const promise = (async () => {
+                     console.log(`Attempting AI question generation for source: ${sourceItem.title}`);
+                     try {
+                         const generationPrompt = `
+                         你是一位經驗豐富的高中語文老師，正在為學生準備高考語文模擬測驗中的“默寫”部分。
+                         請嚴格參照 2024 年中國高考語文全國卷的真題樣式，特別是“補寫出下列句子中的空缺部分”或“根據提示語境默寫相應詩句”的題型。
+                         你的任務是根據我提供的【原文內容】，生成一道默寫題。
+                         具體要求：
+                         1. 題目必須考察【原文內容】中**連續的兩句**。
+                         2. 需要為題目設置一個簡短的**情境描述 (context)**，引導學生回憶這兩句詩文。情境應自然貼切，符合高考風格。
+                         3. 生成包含**兩個連續的填空橫線 \`____\`** 的題目文本 (question)，橫線代表需要學生默寫的兩句。如果原文適合挖空上半句，則格式為 "____，____，[下文提示句]"；如果適合挖空下半句，則格式為 "[上文提示句]，____，____。"。請自行判斷哪種形式更合適。
+                         4. 提取需要填空的**完整兩句原文**作為答案 (answer)，兩句之間應用換行符 '\\n' 分隔。
+                         5. **嚴格確保**答案就是【原文內容】中的連續兩句，且與題目挖空部分完全對應。
+                         6. 返回結果必須是**單個 JSON 對象**，且只包含以下三個鍵： "context" (字符串), "question" (字符串，包含 ____), "answer" (字符串，包含 \\n)。不要包含任何 markdown 標記 ('\`\`\`json', '\`\`\`') 或其他額外文字。
+
+                         【原文內容】(${sourceItem.category} - ${sourceItem.title} - ${sourceItem.author || '佚名'}):
+                         ${sourceItem.content.join('\n')}
+
+                         請根據以上要求和原文生成 JSON 結果。`;
+
+                         const generationContents: GeminiContent[] = [{ parts: [{ text: generationPrompt }] }];
+                         // Use the specified text model (GEMINI_TEXT_MODEL)
+                         const aiResult = await callGeminiAPI(env.GEMINI_API_KEY, GEMINI_TEXT_MODEL, generationContents, { maxOutputTokens: 350, temperature: 0.6 });
+
+                         const candidate = aiResult.candidates?.[0];
+                         const part = candidate?.content?.parts?.[0];
+                         let aiResponseText = '';
+                         if (part && 'text' in part) {
+                              aiResponseText = part.text.trim();
+                              aiResponseText = aiResponseText.replace(/^```json\s*|\s*```$/g, ''); // Remove potential markdown fences
+                         } else { throw new Error("AI did not return a text part."); }
+
+                         console.log(`AI raw response for ${sourceItem.title}: ${aiResponseText}`);
+                         const parsed = JSON.parse(aiResponseText);
+
+                         if (parsed && typeof parsed.context === 'string' && typeof parsed.question === 'string' && typeof parsed.answer === 'string' && parsed.question.includes('____') && parsed.answer.includes('\n') && parsed.answer.split('\n').length >= 2) {
+                             const answerLines = parsed.answer.split('\n');
+                             // Basic check if answer exists in source (might need refinement)
+                             if (sourceItem.content.join('\n').includes(answerLines[0]) && sourceItem.content.join('\n').includes(answerLines[1])) {
+                                const newQuestion: QuestionInfo = {
+                                    id: crypto.randomUUID(),
+                                    question: `${parsed.context}\n${parsed.question}`,
+                                    answer: parsed.answer,
+                                    source: `${sourceItem.category} - 《${sourceItem.title}》 - ${sourceItem.author || '佚名'}`,
+                                    topic: "情境默寫 (2分)" // Fixed topic description
+                                };
+                                // This push inside async might lead to non-deterministic order of questions
+                                generatedQuestions.push(newQuestion);
+                                console.log(`Successfully generated question from AI for ${sourceItem.title}`);
+                             } else {
+                                  console.warn(`AI generated answer for ${sourceItem.title} not found verbatim in source. Answer: ${parsed.answer}`);
+                                  throw new Error("AI generated answer not found in original content.");
+                             }
+                         } else {
+                             console.error(`AI response JSON validation failed for ${sourceItem.title}. Parsed:`, parsed);
+                             throw new Error("AI response JSON validation failed.");
+                         }
+                     } catch (error: any) {
+                         console.error(`AI question generation failed for source ${sourceItem.title}:`, error);
+                         // Don't add question on failure
+                     }
+                 })();
+                 generationPromises.push(promise);
+            });
+
+            // Wait for all concurrent AI generation calls to finish
+            await Promise.all(generationPromises);
+
+            console.log(`Finished all AI generation attempts. Generated ${generatedQuestions.length} questions.`);
+
+            // Handle cases where AI failed to generate enough questions
             if (generatedQuestions.length < MAX_QUESTIONS_PER_SET) {
-                 console.warn(`Warning: Only generated ${generatedQuestions.length} questions for setId ${setId}. Returning partial set.`);
-                 // Decide: Allow partial sets or throw error? Let's allow partial for now.
-            }
-            if (generatedQuestions.length === 0) {
-                 console.error("Failed to generate any questions from flattened fanwei data.");
-                 throw new Error("無法生成任何題目，請檢查數據源或生成邏輯。");
+                const needed = MAX_QUESTIONS_PER_SET - generatedQuestions.length;
+                console.warn(`AI Generation Warning: Only generated ${generatedQuestions.length} valid questions. Attempting fallback generation for ${needed} questions.`);
+                // **Use fallback pattern-based generation**
+                // Filter data to avoid reusing sources AI might have already processed (if needed, depends on fallback strategy)
+                const fallbackFanwei = kaoshifanweiData.filter(item =>
+                     !selectedSources.some(sel => sel.id === item.id) // Example: filter out already selected sources
+                 );
+                 // Call the FALLBACK function (renamed)
+                const fallbackQuestions = generateQuestionSetFromFanweiFallback(fallbackFanwei, needed);
+                generatedQuestions.push(...fallbackQuestions);
+                console.log(`Added ${fallbackQuestions.length} fallback questions. Total: ${generatedQuestions.length}`);
             }
 
-            // Create the QuestionSet object to store in KV (includes answers)
-            const newSet: QuestionSet = {
-                setId: setId,
-                questions: generatedQuestions,
-                createdAt: Date.now()
-            };
+            // Final check if we still don't have enough (e.g., fallback also failed)
+             if (generatedQuestions.length === 0) {
+                  throw new Error("AI and fallback failed to generate any questions.");
+             }
+             if (generatedQuestions.length < MAX_QUESTIONS_PER_SET) {
+                 console.warn(`Warning: Could not generate a full set of ${MAX_QUESTIONS_PER_SET} questions. Proceeding with ${generatedQuestions.length}.`);
+             }
 
-            // Store the set in Cloudflare KV with an expiration time
+            // Ensure consistent order? Maybe sort by category then title?
+            // Example sort:
+            generatedQuestions.sort((a, b) => a.source.localeCompare(b.source)); // Sort by source string for some consistency
+
+            // Store the generated set (potentially partial or including fallbacks) in KV
+            const newSet: QuestionSet = { setId, questions: generatedQuestions, createdAt: Date.now() };
             try {
                 await env.SESSION_KV.put(setId, JSON.stringify(newSet), { expirationTtl: KV_EXPIRATION_TTL_SECONDS });
                 console.log(`Stored new question set in KV with setId: ${setId} (${generatedQuestions.length} questions)`);
             } catch (kvError: any) {
-                console.error(`KV put error for setId ${setId}:`, kvError);
-                throw new Error(`無法保存題組信息: ${kvError.message}`); // Propagate error
+                console.error(`KV put error for AI-generated setId ${setId}:`, kvError);
+                throw new Error(`無法保存 AI 生成的題組信息: ${kvError.message}`);
             }
 
-            // Prepare and return the response for the frontend (without answers)
-            // Explicitly type the parameters in map callback
             const questionsForFrontend = newSet.questions.map(({ answer, ...rest }: QuestionInfo) => rest);
             return new Response(JSON.stringify({ setId: newSet.setId, questions: questionsForFrontend }), { headers: baseHeaders });
-        } // End /api/start_set
+        } // End /api/start_set (AI version)
 
 
         // API Endpoint to submit answers (image upload)
         if (apiPath === 'submit' && request.method === 'POST') {
             console.log("Processing /api/submit request");
 
-            // --- Request Parsing and Validation ---
+            // --- Request Parsing and Validation --- // << UPDATE 4: Replaced validation logic >>
             const formData = await request.formData();
             const setIdValue = formData.get('setId'); // Type: FormDataEntryValue | null
             const imageValue = formData.get('handwritingImage'); // Type: FormDataEntryValue | null
             let imageFile: File; // Declare variable to hold the validated File
 
+            // --- Validation using Type Assertion ---
             // 1. Validate setId
             if (typeof setIdValue !== 'string' || !setIdValue) {
                  console.error("Invalid submit request: Missing or invalid setId.", { setIdValue });
@@ -480,6 +570,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             imageFile = tempImageFile;
             console.log(`Validation passed for setId: ${setId}. Image: ${imageFile.name}, Size: ${imageFile.size}, Type: ${imageFile.type}`);
             // `imageFile` now safely holds the validated File object
+            // ---> 接下來是 KV 檢索、R2 存儲、OCR、評分、反饋等邏輯...
 
 
             // --- Retrieve Question Set from KV ---
@@ -533,6 +624,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             }];
 
             try {
+                 // Use constant defined at the top << UPDATE 5 implicit >>
                 const geminiResult = await callGeminiAPI(env.GEMINI_API_KEY, GEMINI_VISION_MODEL, ocrContents, { maxOutputTokens: 800, temperature: 0.1 });
                 const ocrDuration = Date.now() - ocrStartTime;
                 console.log(`Gemini OCR completed for setId ${setId} in ${ocrDuration}ms.`);
@@ -650,6 +742,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 try {
                     console.log(`Generating AI feedback for setId ${setId}...`);
                     const feedbackContents: GeminiContent[] = [{ parts: [{ text: feedbackPrompt }] }];
+                    // Use constant defined at the top << UPDATE 5 implicit >>
                     const feedbackResult = await callGeminiAPI(env.GEMINI_API_KEY, GEMINI_TEXT_MODEL, feedbackContents, { maxOutputTokens: 500, temperature: 0.7 });
 
                     // Safely access the text part of the feedback response
