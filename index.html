@@ -387,9 +387,6 @@
                  if (resultData.ocrIssue) {
                      hintsHTML += `<p>圖片識別提示：${escapeHtml(resultData.ocrIssue)}</p>`;
                  }
-                 if (resultData.feedbackIssue) {
-                     hintsHTML += `<p>AI反饋提示：${escapeHtml(resultData.feedbackIssue)}</p>`;
-                 }
                  if (hintsHTML) {
                     resultHTML += `<div class="processing-hints">${hintsHTML}</div>`;
                  }
