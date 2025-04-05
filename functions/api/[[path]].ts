@@ -519,26 +519,79 @@ const feedbackPrompt = `你扮演一位性格極端惡劣、憤世嫉俗的高�
                 try {
                     console.log(`Generating ANGRY AI feedback for setId ${setId}...`);
                     const feedbackContents: GeminiContent[] = [{ parts: [{ text: feedbackPrompt }] }];
-                    // Temperature might be slightly higher for more "creative" scolding
                     const feedbackResult = await callGeminiAPI(env.GEMINI_API_KEY, GEMINI_TEXT_MODEL, feedbackContents, { maxOutputTokens: 600, temperature: 0.8 });
-                    const feedbackPart = feedbackResult.candidates?.[0]?.content?.parts?.[0];
 
-                    if (feedbackPart && 'text' in feedbackPart) {
-                        feedback = feedbackPart.text.trim();
-                        feedbackErrorMsg = null; // Success
-                        const feedbackDuration = Date.now() - feedbackStartTime;
-                        console.log(`AI feedback (angry) generated successfully for setId ${setId} in ${feedbackDuration}ms.`);
+                    // --- **ROBUST RESPONSE PROCESSING** ---
+                    let generatedText: string | null = null; // 用於存儲成功提取的文本
+                    let extractionFailureReason = "Unknown structure issue"; // 記錄提取失敗的原因
+
+                    // 1. 檢查 candidates 是否存在且有內容
+                    if (feedbackResult.candidates && feedbackResult.candidates.length > 0) {
+                        const candidate = feedbackResult.candidates[0];
+                        const finishReason = candidate.finishReason; // 獲取結束原因
+
+                        // 記錄一下結束原因，有助於診斷 (例如 MAX_TOKENS)
+                        console.log(`Gemini feedback generation candidate finish reason: ${finishReason} for setId: ${setId}`);
+
+                        // 2. 檢查 content 和 parts 是否存在且有內容
+                        if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
+                            const feedbackPart = candidate.content.parts[0]; // Type is GeminiTextPart | GeminiImageDataPart
+
+                            // --- **CORRECTED TYPE NARROWING** ---
+                            // 3. 檢查 parts[0] 是否確實是一個包含 'text' 屬性的對象 (即 GeminiTextPart)
+                            if (feedbackPart && 'text' in feedbackPart) {
+                                // *** 在這個 if 區塊內部，TypeScript 會將 feedbackPart 的類型收窄為 GeminiTextPart ***
+                                // *** 因此，現在訪問 feedbackPart.text 是類型安全的 ***
+
+                                // 4. 檢查提取出的 text 是否為非空字符串 (去除首尾空格後)
+                                //    因為上面已經檢查過 'text' in feedbackPart，所以這裡 feedbackPart.text 一定存在且是 string
+                                const trimmedText = feedbackPart.text.trim();
+                                if (trimmedText.length > 0) {
+                                    generatedText = trimmedText; // 成功提取！
+                                    extractionFailureReason = ""; // 清空失敗原因
+                                } else {
+                                    extractionFailureReason = "Extracted text is empty after trimming.";
+                                    console.warn(`AI feedback generation returned an empty text string for setId ${setId}.`);
+                                }
+                            } else {
+                                // 如果 feedbackPart 不存在，或者它沒有 'text' 屬性 (例如它是 GeminiImageDataPart)
+                                extractionFailureReason = "First part exists but is not a text part (e.g., image data or missing 'text' property).";
+                                console.warn(`AI feedback generation: parts[0] is not a valid text part for setId ${setId}. Part content:`, JSON.stringify(feedbackPart));
+                            }
+                        } else {
+                            extractionFailureReason = "Candidate content or parts array is missing or empty.";
+                            console.warn(`AI feedback generation: Response structure missing content or parts for setId ${setId}. Candidate:`, JSON.stringify(candidate));
+                        }
                     } else {
-                         console.warn(`AI feedback generation returned no text/unexpected format for setId ${setId}. Falling back.`);
-                         feedbackErrorMsg = "AI 反饋生成返回格式異常。";
-                         // --- (Requirement 5) Removed static fallback feedback ---
-                         feedback = `得分 ${totalScore.toFixed(1)}！ 錯了 ${ (8 - totalScore).toFixed(1)} 分！還想不想考大學了？！回去把錯的給我抄爛！\n錯誤:\n${errorDetails || '連詳細錯誤都沒生成出來，你說你有多差勁！'}`;
+                        extractionFailureReason = "Response contains no candidates.";
+                        console.warn(`AI feedback generation: Response contains no candidates for setId ${setId}.`);
                     }
+                    // --- **END ROBUST PROCESSING** ---
+
+
+                    // --- 根據提取結果決定最終反饋 ---
+                    if (generatedText !== null) {
+                        // --- 成功提取 AI 生成的文本 ---
+                        feedback = generatedText;
+                        feedbackErrorMsg = null; // 標記為成功
+                        const feedbackDuration = Date.now() - feedbackStartTime;
+                        console.log(`AI feedback (angry) generated and extracted successfully for setId ${setId} in ${feedbackDuration}ms.`);
+                    } else {
+                        // --- 未能成功提取文本，使用後備方案 ---
+                        console.error(`Failed to extract valid AI feedback text for setId ${setId}. Reason: ${extractionFailureReason}. Using fallback.`);
+                        // **關鍵：在日誌中打印完整的原始 API 回應，以便徹底分析結構**
+                        console.error("Full Gemini Response causing fallback:", JSON.stringify(feedbackResult, null, 2));
+                        feedbackErrorMsg = `AI 反饋生成成功，但內容提取失敗 (${extractionFailureReason})。`; // 提供更詳細的錯誤信息
+                        // 使用之前的後備反饋
+                        feedback = `得分 ${totalScore.toFixed(1)}！ 錯了 ${ (8 - totalScore).toFixed(1)} 分！還想不想考大學了？！回去把錯的給我抄爛！\n錯誤:\n${errorDetails || '連詳細錯誤都沒生成出來，你說你有多差勁！'}`;
+                    }
+
                 } catch (feedbackError: any) {
-                    console.error(`Gemini feedback generation failed for setId ${setId}:`, feedbackError);
-                    feedbackErrorMsg = `AI 反饋生成服務調用失敗: ${feedbackError.message}`;
-                    // --- (Requirement 5) Removed static fallback feedback ---
-                    feedback = `得分 ${totalScore.toFixed(1)}！ 錯了 ${ (8 - totalScore).toFixed(1)} 分！還想不想考大學了？！回去把錯的給我抄爛！\n錯誤:\n${errorDetails || '連詳細錯誤都沒生成出來，你說你有多差勁！'}`;
+                     // --- API 調用本身失敗 (保持不變) ---
+                     console.error(`Gemini feedback generation failed for setId ${setId}:`, feedbackError);
+                     feedbackErrorMsg = `AI 反饋生成服務調用失敗: ${feedbackError.message}`;
+                     // 使用後備反饋
+                     feedback = `得分 ${totalScore.toFixed(1)}！ 錯了 ${ (8 - totalScore).toFixed(1)} 分！還想不想考大學了？！回去把錯的給我抄爛！\n錯誤:\n${errorDetails || '連詳細錯誤都沒生成出來，你說你有多差勁！'}`;
                 }
 
                  // --- (Requirement 6) Rank Decrease for Non-Full Marks ---
