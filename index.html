@@ -229,7 +229,7 @@
                                 <strong>${index + 1}.</strong>
                                 <span class="question-context">${escapeHtml(context)}</span>
                                 <span class="question-verse">${formattedVerse}</span>
-                                <span class="question-source">${sourceInfoString}</span>
+                                <span class="question-source">${sourceInfoString}</span> 
                              </p>`;
                         questionListDiv.appendChild(item);
                     });
@@ -361,9 +361,6 @@
                  let hintsHTML = '';
                  if (resultData.ocrIssue) {
                      hintsHTML += `<p>OCR 提示：${escapeHtml(resultData.ocrIssue)}</p>`;
-                 }
-                 if (resultData.feedbackIssue) {
-                    hintsHTML += `<p>Feedback 提示：${escapeHtml(resultData.feedbackIssue)}</p>`;
                  }
                  // Only show the hints container if there are hints
                  if (hintsHTML) {
