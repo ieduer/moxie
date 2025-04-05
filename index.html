@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>墨力全開 - AI 默寫教練</title>
   <style>
-    /* 基本樣式 */
+    /* Basic Styles */
     body { font-family: sans-serif; line-height: 1.6; padding: 20px; max-width: 800px; margin: 0 auto; background-color: #f9f9f9; }
     h1 { text-align: center; color: #333; }
     strong { color: #d9534f; }
@@ -21,11 +21,9 @@
     .underline-blank { text-decoration: underline; color: #aaa; display: inline-block; min-width: 10em; text-align: center; }
     .answer-wrapper { margin-top: 10px; border: 1px solid #ddd; border-radius: 4px; background-color: #fff; }
     .canvas-container { position: relative; width: 100%; height: 180px; border-bottom: 1px solid #eee; }
-    /* 兩層 canvas 都放在容器中，覆蓋層採絕對定位 */
+    /* Two-layer canvas: both placed in the container; overlay is absolute */
     .canvas-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; touch-action: none; }
-    /* 底層 canvas 自動填充容器 */
     .base-canvas { z-index: 1; }
-    /* 覆蓋層 canvas 用於臨時顯示 */
     .overlay-canvas { z-index: 2; pointer-events: none; }
     .controls { padding: 5px; text-align: right; }
     .clear-btn { background-color: #f0ad4e; font-size: 0.9em; padding: 5px 10px; }
@@ -55,11 +53,11 @@
   </div>
   <div id="result" style="display: none;"></div>
 
-  <!-- 使用 ES module 方式引入 perfect‑freehand，改用 esm.sh CDN -->
+  <!-- Using ES module to load perfect-freehand from esm.sh -->
   <script type="module">
     import { getStroke } from 'https://esm.sh/perfect-freehand@1.2.0';
 
-    // 工具函數：將筆畫數據轉換為 SVG 路徑字串（用於 Path2D）
+    // Utility: Convert stroke data to an SVG path string
     function getSvgPathFromStroke(stroke) {
       if (!stroke || stroke.length < 1) return '';
       const d = stroke.reduce(
@@ -73,7 +71,7 @@
       return `${d.join(' ')} Z`;
     }
 
-    // 模塊化的手寫 canvas 類（雙層 canvas 設計）
+    // HandwritingCanvas class with dual-layer canvas and improved event binding
     class HandwritingCanvas {
       constructor(container, options = {}) {
         this.options = { ...{
@@ -86,20 +84,17 @@
         }, ...options };
 
         this.container = container;
-        this.strokes = [];         // 保存已完成筆跡
-        this.currentStroke = [];   // 當前筆跡點序列
+        this.strokes = [];
+        this.currentStroke = [];
 
         this.initCanvases();
         this.bindEvents();
-        this.resize(); // 初始調整尺寸
+        this.resize();
       }
 
-      // 在容器內創建底層與覆蓋層 canvas
       initCanvases() {
-        // 底層 canvas：用於顯示最終筆跡（只在筆跡完成時更新）
         this.baseCanvas = document.createElement('canvas');
         this.baseCanvas.classList.add('canvas-layer', 'base-canvas');
-        // 覆蓋層 canvas：用於實時繪製當前筆跡
         this.overlayCanvas = document.createElement('canvas');
         this.overlayCanvas.classList.add('canvas-layer', 'overlay-canvas');
 
@@ -111,24 +106,19 @@
         this.overlayCtx = this.overlayCanvas.getContext('2d');
       }
 
-      // 根據容器尺寸與 DPR 設置 canvas 大小
       resize() {
         const dpr = window.devicePixelRatio || 1;
         const rect = this.container.getBoundingClientRect();
         [this.baseCanvas.width, this.baseCanvas.height] = [rect.width * dpr, rect.height * dpr];
         [this.overlayCanvas.width, this.overlayCanvas.height] = [rect.width * dpr, rect.height * dpr];
 
-        // 重設 transform 並縮放
         [this.baseCtx, this.overlayCtx].forEach(ctx => {
           ctx.setTransform(1, 0, 0, 1, 0, 0);
           ctx.scale(dpr, dpr);
         });
-
-        // 重繪底層筆跡
         this.redrawBase();
       }
 
-      // 將所有已完成筆跡重繪到底層 canvas
       redrawBase() {
         const rect = this.container.getBoundingClientRect();
         this.baseCtx.clearRect(0, 0, rect.width, rect.height);
@@ -141,7 +131,6 @@
         });
       }
 
-      // 在覆蓋層 canvas 中繪製當前筆跡
       redrawOverlay() {
         const rect = this.container.getBoundingClientRect();
         this.overlayCtx.clearRect(0, 0, rect.width, rect.height);
@@ -154,7 +143,6 @@
         }
       }
 
-      // 計算事件在容器內的相對坐標（物理像素）
       getPoint(e) {
         const rect = this.container.getBoundingClientRect();
         let x, y, pressure;
@@ -173,10 +161,9 @@
         return [x, y, pressure];
       }
 
+      // Updated bindEvents with touch fallback for iPad
       bindEvents() {
-        // pointerdown：開始新筆跡
         this.pointerDownHandler = (e) => {
-          if (e.button !== 0 && e.pointerType === 'mouse') return;
           e.preventDefault();
           this.currentStroke = [];
           const pt = this.getPoint(e);
@@ -185,7 +172,6 @@
           this.redrawOverlay();
         };
 
-        // pointermove：持續記錄點，並更新覆蓋層
         this.pointerMoveHandler = (e) => {
           if (!this.isDrawing) return;
           const pt = this.getPoint(e);
@@ -195,7 +181,6 @@
           }
         };
 
-        // pointerup/pointercancel：結束筆跡，commit 到底層並清空覆蓋層
         this.pointerUpHandler = (e) => {
           if (!this.isDrawing) return;
           this.isDrawing = false;
@@ -207,13 +192,20 @@
           this.overlayCtx.clearRect(0, 0, rect.width, rect.height);
         };
 
-        this.container.addEventListener('pointerdown', this.pointerDownHandler, { passive: false });
-        this.container.addEventListener('pointermove', this.pointerMoveHandler, { passive: false });
-        window.addEventListener('pointerup', this.pointerUpHandler);
-        this.container.addEventListener('pointercancel', this.pointerUpHandler);
+        if (window.PointerEvent) {
+          this.container.addEventListener('pointerdown', this.pointerDownHandler, { passive: false });
+          this.container.addEventListener('pointermove', this.pointerMoveHandler, { passive: false });
+          window.addEventListener('pointerup', this.pointerUpHandler);
+          this.container.addEventListener('pointercancel', this.pointerUpHandler);
+        } else {
+          // Fallback for touch events on iPad or older devices
+          this.container.addEventListener('touchstart', this.pointerDownHandler, { passive: false });
+          this.container.addEventListener('touchmove', this.pointerMoveHandler, { passive: false });
+          window.addEventListener('touchend', this.pointerUpHandler);
+          this.container.addEventListener('touchcancel', this.pointerUpHandler);
+        }
       }
 
-      // 清除所有筆跡
       clear() {
         this.strokes = [];
         this.currentStroke = [];
@@ -222,13 +214,13 @@
         this.overlayCtx.clearRect(0, 0, rect.width, rect.height);
       }
 
-      // 導出底層 canvas 圖像（用於提交答案）
       toDataURL(type = 'image/png') {
         return this.baseCanvas.toDataURL(type);
       }
     }
 
-    // 以下為題目獲取、初始化手寫區與提交答案等邏輯
+    // The rest of your code: fetching questions, initializing handwriting areas,
+    // handling submit button, etc. (same as before)
     const statusDiv = document.getElementById('status');
     const questionsDiv = document.getElementById('questions');
     const questionListDiv = document.getElementById('question-list');
@@ -386,7 +378,6 @@
       }
     });
 
-    // 當窗口尺寸改變時，調整所有手寫區尺寸
     let resizeTimeout;
     window.addEventListener("resize", () => {
       clearTimeout(resizeTimeout);
