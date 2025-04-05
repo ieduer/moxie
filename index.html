@@ -89,22 +89,22 @@
 </head>
 <body>
     <h1>AI 默寫 <span style="font-size: 0.7em; color: #777;"></span></h1>
-    <p style="text-align: center;"><strong>目標：高考默寫 8 分，必須拿滿！一分都不能少！</strong></p>
+    <p style="text-align: center;"><strong>高考默寫8分，放條狗都能拿滿！何況是你我！</strong></p>
     <p style="text-align: center; color: orange; font-weight: bold;">
-        請將 4 道題的答案按順序分四行，清晰寫在紙上，然後拍照上傳。確保光線充足、字跡清晰！
+        4道題，按順序分四行，拍照上傳。確保字跡清晰！
     </p>
 
     <div class="button-group">
         <button id="get-question-btn">開始挑戰</button>
-        <button id="check-backend-btn">檢查後端狀態</button>
+        <button id="check-backend-btn">檢查後端</button>
     </div>
 
     <div id="status">狀態：等待操作...</div>
 
     <div id="questions" style="display: none;">
-        <h2>請在紙上書寫答案 (共 8 分):</h2>
+        <h2>紙上寫答案 (共 8 分):</h2>
         <p style="text-align: center; color: #777; font-style: italic;">
-            <strong style="color: red;">請注意：</strong>
+            <strong style="color: red;">‼️：</strong>
             請勿書寫題號，答案中**不要加標點符號**。
         </p>
         <div id="question-list"></div>
@@ -118,7 +118,7 @@
         <div id="image-preview-container">
             <img id="image-preview" src="#" alt="圖片預覽">
         </div>
-         <button id="submit-btn" disabled>提交</button>
+         <button id="submit-btn" disabled>提個交</button>
     </div>
 
     <div id="result" style="display: none;"></div>
@@ -172,9 +172,9 @@
             compressionInfo.textContent = '';
             submitBtn.disabled = true;
             isSubmitting = false;
-            setLoadingState(getQuestionBtn, false, '開始挑戰'); // Re-enable start button
-            setLoadingState(submitBtn, false, '提交答案照片'); // Ensure submit is reset
-            setLoadingState(checkBackendBtn, false, '檢查後端狀態'); // Ensure check button is reset
+            setLoadingState(getQuestionBtn, false, '開戰！'); // Re-enable start button
+            setLoadingState(submitBtn, false, '提交照片'); // Ensure submit is reset
+            setLoadingState(checkBackendBtn, false, '後端狀態'); // Ensure check button is reset
         }
 
         function displayError(message, container = statusDiv) {
@@ -202,8 +202,8 @@
 
         getQuestionBtn.addEventListener('click', async () => {
             resetUI();
-            setLoadingState(getQuestionBtn, true, '開始挑戰');
-            statusDiv.textContent = '正在從後端獲取新題組...';
+            setLoadingState(getQuestionBtn, true, '開戰');
+            statusDiv.textContent = '正在獲取新題組...';
             statusDiv.style.display = 'block'; // Show status
 
             try {
@@ -258,7 +258,7 @@
                 displayError(`獲取題目失敗: ${error.message}`);
                 resetUI(); // Reset UI fully on error
             } finally {
-                setLoadingState(getQuestionBtn, false, '開始挑戰');
+                setLoadingState(getQuestionBtn, false, '開戰');
             }
         });
 
@@ -345,7 +345,7 @@
 
             isSubmitting = true;
             setLoadingState(submitBtn, true, '提交答案照片');
-            resultDiv.innerHTML = '<div class="loading">正在上傳圖片並等待 AI 評分，過程可能需要一些時間，請耐心等待...</div>';
+            resultDiv.innerHTML = '<div class="loading">正在上傳圖片並等待 AI 評分，需要一些時間，請耐心等待...</div>';
             resultDiv.style.display = 'block';
             resultDiv.scrollIntoView({ behavior: 'smooth' });
 
@@ -472,7 +472,7 @@
 
                  // --- (Requirement 6) Display Rank and Badge ---
                  if (resultData.badge) {
-                     resultHTML += `<div style="text-align: center; margin-top: 20px; font-size: 1.2em; font-weight: bold; color: #007bff;">恭喜你獲得 <span style="font-size: 1.5em;">${resultData.badge}</span> 徽章！</div>`;
+                     resultHTML += `<div style="text-align: center; margin-top: 20px; font-size: 1.2em; font-weight: bold; color: #007bff;">恭喜你獲得 <span style="font-size: 1.5em;">${resultData.badge}</span> 徽章！（心裡有就好）</div>`;
                  }
                  if (resultData.rank !== undefined) {
                      resultHTML += `<div style="text-align: center; margin-bottom: 10px; font-size: 0.9em; color: #777;">當前階級：${convertToChineseRankFrontend(resultData.rank)}階</div>`;

@@ -217,7 +217,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
         if (apiPath === 'hello' && request.method === 'GET') {
             const dataInfo = {
-                message: "墨力全開 Backend is running.",
+                message: "Backend is running.",
                 status: "OK",
                 timestamp: new Date().toISOString(),
                 moniQuestionsLoaded: moniQuestions.length, // Report count from validated moni data
@@ -473,12 +473,12 @@ function removePunctuation(text: string): string { // 顯式指定 text 參數�
             // Check score against the target of 8
             if (totalScore === 8) {
                  // (Requirement 3 handled in frontend)
-                 feedback = `非常好！滿分 8 分！簡直是默寫的神！繼續保持！`;
+                 feedback = `非常好！滿分 8 分！簡直是MXDS（默寫的神）！繼續保持！`;
                  feedbackErrorMsg = null;
 
                  // --- (Requirement 6) Rank Increase and Badge for Full Marks ---
                  currentRank++; // 全對，升階
-                 badge = `一階`; // 默認徽章，可以根據階級設定更豐富的徽章系統
+                 badge = `巔峰七階`; // 默認徽章，可以根據階級設定更豐富的徽章系統
                  if (currentRank > 1) {
                      badge = `${convertToChineseRank(currentRank)}階`; // 使用函數轉換數字階級為中文
                  }
