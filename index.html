@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>墨力全開 - AI 默寫教練 (拍照版 v3 - moni.json)</title>
     <style>
-        /* Styles remain largely the same */
+        /* Styles remain largely the same, no changes needed */
         body { font-family: sans-serif; line-height: 1.6; padding: 20px; max-width: 800px; margin: 0 auto; background-color: #f9f9f9; }
         h1 { text-align: center; color: #333; }
         strong { color: #d9534f; }
@@ -47,7 +47,7 @@
         .incorrect-cross { color: red; font-weight: bold; margin-left: 5px; }
         .error-message { color: #d9534f; font-weight: bold; margin-top: 10px; padding: 10px; background-color: #f2dede; border: 1px solid #ebccd1; border-radius: 4px;}
         .feedback-box { margin-top: 25px; padding: 15px; border-radius: 5px; font-size: 1.1em; text-align: center; white-space: pre-wrap; word-wrap: break-word; border: 1px solid; }
-        /* Feedback Styles (Requirement 3 & 4) */
+        /* Feedback Styles (Requirement 3 & 5) */
         .feedback-success { background-color: #dff0d8; border-color: #d6e9c6; color: #3c763d; font-weight: bold; }
         .feedback-fail { background-color: #f2dede; border-color: #ebccd1; color: #a94442; font-weight: bold; font-size: 1.2em; /* Make scolding more prominent */ }
 
@@ -73,7 +73,7 @@
         .processing-hints p { margin: 5px 0; font-weight: bold; }
         .item-hint { color: magenta; font-size: 0.9em; margin-top: 5px; font-style: italic; } /* For item-specific errors like [無法識別] */
 
-        /* --- Praise Animation --- (Requirement 3) */
+        /* --- Praise Animation --- (Requirement 6) */
         @keyframes celebrate {
             0% { transform: scale(1); background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
             50% { transform: scale(1.05); background-color: #dff0d8; box-shadow: 0 8px 16px rgba(60, 118, 61, 0.4); }
@@ -104,13 +104,17 @@
 
     <div id="questions" style="display: none;">
         <h2>請在紙上書寫以下內容 (共 8 分):</h2>
+        <p style="text-align: center; color: #777; font-style: italic;">
+            <strong style="color: red;">請注意：</strong>
+            請勿書寫題號，答案中**不要加標點符號**。
+        </p>
         <div id="question-list"></div>
     </div>
 
     <div id="upload-section" style="display: none;">
         <h2>拍照並上傳答案</h2>
         <label for="image-upload" id="image-upload-label">選擇或拍攝照片:</label>
-        <input type="file" id="image-upload" name="image-upload" accept="image/*" capture="environment">
+        <input type="file" id="image-upload" name="image-upload" accept="image/*">  <!-- Requirement 1: Removed capture="environment" -->
         <div id="compression-info"></div>
         <div id="image-preview-container">
             <img id="image-preview" src="#" alt="圖片預覽">
@@ -187,18 +191,13 @@
                  console.warn("escapeHtml called with non-string:", unsafe);
                  return String(unsafe); // Convert non-strings to strings
             }
-            // Chain replace calls correctly
             return unsafe
                  .replace(/&/g, "&")
                  .replace(/</g, "<")
                  .replace(/>/g, ">")
-                 // << FINAL CORRECTION: Use single quotes for the replacement string literal >>
                  .replace(/"/g, '"')
-                 // << END FINAL CORRECTION >>
-                 .replace(/'/g, "'"); // Ensure this line ends with a semicolon if it's the last in the chain for the return statement.
+                 .replace(/'/g, "'");
          }
-
-
 
         // --- Event Listeners ---
 
@@ -229,9 +228,9 @@
                     questionsDiv.style.display = 'block';
                     uploadSection.style.display = 'block';
 
-                    // Display questions from moni.json structure
+                    // Display questions from moni.json structure (Requirement 2: Removed question numbers)
                     questionListDiv.innerHTML = ''; // Clear previous list
-                    currentQuestions.forEach((q, index) => {
+                    currentQuestions.forEach((q, index) => { // index parameter kept but not used
                         const item = document.createElement('div');
                         item.classList.add('question-item');
 
@@ -245,7 +244,6 @@
 
                         item.innerHTML = `
                             <p>
-                                <strong>${index + 1}.</strong>
                                 <span class="question-text">${formattedQuestion}</span>
                                 <span class="question-details">${detailsString}</span>
                              </p>`;
@@ -452,7 +450,7 @@
                      pre.textContent = resultData.feedback; // Use textContent for auto-escaping by browser
                      feedbackContainer.appendChild(pre);
 
-                     // (Requirement 3) Trigger animation AFTER rendering results+feedback
+                     // (Requirement 6) Trigger animation AFTER rendering results+feedback
                      if (isFullMarks) {
                          // Apply animation class to the main result div
                          resultDiv.classList.add('full-marks-celebration');
@@ -474,6 +472,17 @@
                  }
                  resultDiv.appendChild(feedbackContainer); // Add feedback box to the results div
 
+                 // --- (Requirement 6) Display Rank and Badge ---
+                 if (resultData.badge) {
+                     resultHTML += `<div style="text-align: center; margin-top: 20px; font-size: 1.2em; font-weight: bold; color: #007bff;">恭喜你獲得 <span style="font-size: 1.5em;">${resultData.badge}</span> 徽章！</div>`;
+                 }
+                 if (resultData.rank !== undefined) {
+                     resultHTML += `<div style="text-align: center; margin-bottom: 10px; font-size: 0.9em; color: #777;">當前階級：${convertToChineseRankFrontend(resultData.rank)}階</div>`;
+                 }
+                 resultDiv.innerHTML = resultHTML; // Re-render with rank and badge
+                 resultDiv.appendChild(feedbackContainer); // Ensure feedback is still there after re-render
+
+
             } catch (error) {
                  console.error('提交答案或處理結果時出錯:', error);
                  displayError(`提交或處理失敗: ${error.message}`, resultDiv);
@@ -487,6 +496,21 @@
 
         // --- Initial Setup ---
         resetUI();
+
+        // --- (Requirement 6) Frontend Helper function for Chinese Rank (same as backend) ---
+        function convertToChineseRankFrontend(rank) {
+            const chineseNumbers = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
+            if (rank <= 10) {
+                return chineseNumbers[rank];
+            } else if (rank < 20) {
+                return "十" + chineseNumbers[rank - 10];
+            } else if (rank % 10 === 0) {
+                return chineseNumbers[Math.floor(rank / 10)] + "十";
+            } else {
+                return chineseNumbers[Math.floor(rank / 10)] + "十" + chineseNumbers[rank % 10];
+            }
+        }
+
 
     </script>
     <script type="text/javascript">

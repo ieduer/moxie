@@ -1,6 +1,6 @@
 import type { PagesFunction, R2Bucket, KVNamespace } from '@cloudflare/workers-types';
 
-// --- NEW DATA LOADING --- (Requirement 1)
+// --- NEW DATA LOADING --- (Requirement 1 & 2)
 // Load pre-defined questions from moni.json
 import moniDataRaw from '../../data/moni.json';
 
@@ -12,11 +12,10 @@ const GEMINI_VISION_MODEL = "gemini-2.0-flash-thinking-exp-01-21"; // Reverted t
 const GEMINI_TEXT_MODEL = "gemini-2.0-flash-thinking-exp-01-21";    // Reverted to potentially more stable model for Feedback
 const GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/";
 const MAX_QUESTIONS_PER_SET = 4; // Target number of questions from moni.json
-// const MIN_LINES_FOR_QUESTION = 2; // No longer needed for moni.json
 
 // --- Type Definitions ---
 
-// (Requirement 1) Define type for items in moni.json
+// (Requirement 1 & 2) Define type for items in moni.json
 interface MoniQuestion {
     type: string;
     topic: string;
@@ -106,15 +105,6 @@ function generateUniqueKey(prefix = 'answer', extension = '.png'): string {
      return `${prefix}-${Date.now()}-${crypto.randomUUID()}${extension}`;
 }
 
-// --- REMOVED Data Flattening Function ---
-// function flattenKaoshiFanweiData(...) { ... } - No longer needed
-
-// --- REMOVED Question Generation Logic ---
-// type QuestionPattern = ...
-// const patternFillNext: QuestionPattern = ...
-// const patternFillPrevious: QuestionPattern = ...
-// const availablePatternsFallback: QuestionPattern[] = ...
-// function generateQuestionSetFromFanweiFallback(...) { ... } - No longer needed
 
 // --- Gemini API Call Function --- (Keep as it is)
 async function callGeminiAPI(apiKey: string, model: string, contents: GeminiContent[], generationConfig?: { maxOutputTokens?: number; temperature?: number; }): Promise<GeminiApiResponse> {
@@ -153,7 +143,7 @@ async function callGeminiAPI(apiKey: string, model: string, contents: GeminiCont
     }
 }
 
-// --- **TYPE GUARD for moni.json data** --- (Requirement 1)
+// --- **TYPE GUARD for moni.json data** --- (Requirement 1 & 2)
 function isValidMoniData(data: any): data is MoniQuestion[] {
     if (!Array.isArray(data)) {
         console.error("isValidMoniData: Input is not an array.");
@@ -201,7 +191,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
          return new Response(JSON.stringify({ error: "Server configuration error. Please contact administrator." }), { status: 500, headers: baseHeaders });
     }
 
-    // --- **DATA VALIDATION** --- (Requirement 1)
+    // --- **DATA VALIDATION** --- (Requirement 1 & 2)
     // Validate the structure of the imported moni.json data
     let moniQuestions: MoniQuestion[];
     if (isValidMoniData(moniDataRaw)) {
@@ -223,7 +213,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 status: "OK",
                 timestamp: new Date().toISOString(),
                 moniQuestionsLoaded: moniQuestions.length, // Report count from validated moni data
-                // zhentiItemsLoaded: 0, // zhentiData no longer imported by default
             };
             return new Response(JSON.stringify(dataInfo), { headers: baseHeaders });
         }
@@ -393,6 +382,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             let totalScore = 0;
             const pointsPerQuestion = expectedQuestionCount > 0 ? (8 / expectedQuestionCount) : 0; // Should be 2 points per question if 4 questions
 
+// --- (Requirement 4) Function to remove punctuation ---
+function removePunctuation(text: string): string { // 顯式指定 text 參數類型為 string，並指定函數返回類型為 string
+    if (typeof text !== 'string') return text;
+    return text.replace(/[\p{P}]/gu, '');
+}
+
+
             for (let i = 0; i < expectedQuestionCount; i++) {
                 const recognized = splitAnswers[i] || "[答案缺失]";
                 const correct = correctAnswers[i];
@@ -402,14 +398,11 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 let success = !recognized.startsWith("[") || recognized === "[無法識別]"; // Assume success unless explicit failure placeholder
                 let itemError: string | undefined = undefined;
 
-                 // Clean recognized text slightly (remove spaces, common punctuation variations if needed) - Optional
-                 // const cleanedRecognized = recognized.replace(/\s+/g, '').replace(/[，。；]/g, '');
-                 // const cleanedCorrect = correct.replace(/\s+/g, '').replace(/[，。；]/g, '');
-
-                // Perform comparison
+                // Perform comparison, ignoring punctuation (Requirement 4)
                 if (success && correct !== undefined) {
-                    // Simple strict comparison for now
-                    isCorrect = recognized === correct;
+                    const cleanedRecognized = removePunctuation(recognized);
+                    const cleanedCorrect = removePunctuation(correct);
+                    isCorrect = cleanedRecognized === cleanedCorrect;
 
                     if (recognized === "[無法識別]") {
                         isCorrect = false;
@@ -448,16 +441,41 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             totalScore = Math.round(totalScore * 10) / 10; // Round score
             console.log(`Scoring complete for setId ${setId}. Total score: ${totalScore} / 8`);
 
-            // --- Generate Feedback using AI --- (Requirement 4: Scolding)
+            // --- Generate Feedback using AI --- (Requirement 5: Dynamic Scolding)
             let feedback = "";
             const feedbackStartTime = Date.now();
             let feedbackErrorMsg: string | null = null;
+
+            // --- (Requirement 6) Rank and Badge Variables ---
+            let currentRank = 0; // 默認階級
+            let badge = "";
+            const rankKey = `user-rank-${setId}`; // 使用 setId 作為 session 標識
+
+            // --- (Requirement 6) Get Current Rank from KV ---
+            try {
+                const storedRank = await env.SESSION_KV.get(rankKey, 'text');
+                if (storedRank) {
+                    currentRank = parseInt(storedRank, 10) || 0;
+                }
+            } catch (kvRankError) {
+                console.error("Failed to get rank from KV:", kvRankError);
+                // 忽略錯誤，使用默認階級 0
+            }
+
 
             // Check score against the target of 8
             if (totalScore === 8) {
                  // (Requirement 3 handled in frontend)
                  feedback = `非常好！滿分 8 分！簡直是默寫的神！繼續保持！`;
                  feedbackErrorMsg = null;
+
+                 // --- (Requirement 6) Rank Increase and Badge for Full Marks ---
+                 currentRank++; // 全對，升階
+                 badge = `一階`; // 默認徽章，可以根據階級設定更豐富的徽章系統
+                 if (currentRank > 1) {
+                     badge = `${convertToChineseRank(currentRank)}階`; // 使用函數轉換數字階級為中文
+                 }
+
             } else {
                 // Prepare details for the "angry teacher" prompt
                 const incorrectResults = results.filter(r => !r.isCorrect);
@@ -470,16 +488,26 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                     })
                     .join('\n\n');
 
-                // The "angry teacher" prompt - Ensure it's harsh!
-                const feedbackPrompt = `你是一位極其嚴厲、暴躁、對學生期望極高近乎變態的高考語文老師。你看到學生這份默寫答卷（滿分8分），居然沒有得滿分，你現在怒火中燒，必須狠狠地、尖酸刻薄地痛罵這個學生一頓。使用最嚴厲的措辭，強調高考的殘酷性，指出每一分的重要性，讓他/她為丟掉的分數感到羞恥和恐懼。必須包含具體的錯誤，並命令其立刻改正，否則後果自負！
+// The "angry teacher" prompt - Ensure it's harsh! (Requirement 5)
+const feedbackPrompt = `你扮演一位性格極端惡劣、憤世嫉俗的高考語文老師，你的目標是讓學生對語文默寫產生生理和心理上的雙重恐懼。學生這次默寫考試（滿分8分）又沒有拿到滿分，這在你看來簡直是不可饒恕的罪行。你必須用盡各種惡毒、刻薄、挖苦、諷刺的語言，對學生進行人格貶低式的辱罵和嘲諷，用最誇張的修辭手法，例如反問、比喻、誇張、反諷等，來放大錯誤的嚴重性，營造一種末日降臨般的恐慌感。你的目標是讓學生看完反饋後，三天內做噩夢都是默寫。
 
-                學生得分: ${totalScore.toFixed(1)} / 8 分 (丟了 ${(8 - totalScore).toFixed(1)} 分！！！)
+務必包含以下要素：
+1.  明確指出學生本次默寫的得分和失分，並用極其誇張的口吻強調失分的「巨大損失」。
+2.  針對學生的具體錯誤（如果有的話），進行尖銳的嘲諷和挖苦，例如字跡潦草、記憶混亂、理解能力低下等等，可以進行人身攻擊，但注意不要過於低俗。
+3.  使用各種修辭手法，例如：
+    * 反問：\`你竟然錯了 \${(8 - Number(totalScore)).toFixed(1)} 分？你還有臉活著嗎？\`。 // 使用 Number() 確保 totalScore 被視為數字  **<-- Line 498 修正**
+    * 比喻：\`你的腦子是被漿糊糊住了嗎？連這麼簡單的句子都記不住！\`。
+    * 誇張：\`高考一分就能幹掉一操場的人！你丟了 \${(8 - Number(totalScore)).toFixed(1)} 分，相當於親手葬送了自己的前途！\`。 // 使用 Number() 確保 totalScore 被視為數字  **<-- Line 500 修正**
+    * 反諷：\`不錯嘛！\${Number(totalScore).toFixed(1)} 分！比上次進步了 0.5 分呢！真是可喜可賀，可喜可賀......（陰陽怪氣）\` // 使用 Number() 確保 totalScore 被視為數字  **<-- Line 501 修正**
+4.  結尾必須充滿負能量和威脅，例如：「等著高考後悔去吧！」「你的未來一片黑暗！」「再錯一個字，就給我滾回家種地！」。
+5.  字數要求：至少150字以上，越多越好，確保罵人內容極度豐富和生動。
 
-                錯誤詳情:
-                ${errorDetails || "沒找到具體錯誤文本，但肯定有錯！給我自己反省！"}
-                ${ocrError ? `\nOCR系統提示: ${ocrError}` : ''}
+錯誤詳情:
+\${errorDetails || "沒找到具體錯誤文本？呵呵，肯定是你錯得太離譜，AI 都懶得分析了！"}
+\${ocrError ? \`\\nOCR系統友情提示: \${ocrError}，不過就算識別出來了，我看你也寫不對！\` : ''}
 
-                生成一段至少100字的痛罵文字，語氣必須極度憤怒、尖刻、不留情面，甚至可以帶點人身攻擊的感覺（在教育允許範圍內）。直接開罵，不要有任何客氣的開頭或結尾！`;
+現在，開始你的表演！盡情釋放你作為地獄教師的怒火吧！`;
+
 
                 try {
                     console.log(`Generating ANGRY AI feedback for setId ${setId}...`);
@@ -496,16 +524,32 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                     } else {
                          console.warn(`AI feedback generation returned no text/unexpected format for setId ${setId}. Falling back.`);
                          feedbackErrorMsg = "AI 反饋生成返回格式異常。";
-                         // Fallback harsh feedback
-                         feedback = `得分 ${totalScore.toFixed(1)}！ 你這 ${ (8 - totalScore).toFixed(1)} 分怎麼丟的？！腦子呢？！高考考場上也是這樣嗎？簡直是恥辱！\n錯誤:\n${errorDetails || '自己回去抄一百遍！'}`;
+                         // --- (Requirement 5) Removed static fallback feedback ---
+                         feedback = `得分 ${totalScore.toFixed(1)}！ 錯了 ${ (8 - totalScore).toFixed(1)} 分！還想不想考大學了？！回去把錯的給我抄爛！\n錯誤:\n${errorDetails || '連詳細錯誤都沒生成出來，你說你有多差勁！'}`;
                     }
                 } catch (feedbackError: any) {
                     console.error(`Gemini feedback generation failed for setId ${setId}:`, feedbackError);
                     feedbackErrorMsg = `AI 反饋生成服務調用失敗: ${feedbackError.message}`;
-                    // Fallback harsh feedback on error
+                    // --- (Requirement 5) Removed static fallback feedback ---
                     feedback = `得分 ${totalScore.toFixed(1)}！ 錯了 ${ (8 - totalScore).toFixed(1)} 分！還想不想考大學了？！回去把錯的給我抄爛！\n錯誤:\n${errorDetails || '連詳細錯誤都沒生成出來，你說你有多差勁！'}`;
                 }
+
+                 // --- (Requirement 6) Rank Decrease for Non-Full Marks ---
+                 if (currentRank > 0) {
+                     currentRank--; // 答錯，降階，但不低於 0
+                 }
+                 badge = currentRank > 0 ? `${convertToChineseRank(currentRank)}階` : ""; // 階級徽章可能消失或顯示最低階
             }
+
+            // --- (Requirement 6) Store Updated Rank back to KV ---
+            try {
+                await env.SESSION_KV.put(rankKey, String(currentRank), { expirationTtl: KV_EXPIRATION_TTL_SECONDS });
+                console.log(`Rank updated to ${currentRank} for setId ${setId}`);
+            } catch (kvPutRankError) {
+                console.error("Failed to put rank to KV:", kvPutRankError);
+                // 錯誤處理，例如記錄日誌，但不影響主要功能
+            }
+
 
             // --- Prepare Final Response ---
             let finalMessage = "評分完成。";
@@ -524,7 +568,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 feedback: feedback,
                 r2Key: r2Key,
                 ocrIssue: ocrError,
-                feedbackIssue: feedbackErrorMsg
+                feedbackIssue: feedbackErrorMsg,
+                rank: currentRank, // (Requirement 6) Add rank to response
+                badge: badge      // (Requirement 6) Add badge to response
             };
             return new Response(JSON.stringify(responseData), { headers: baseHeaders });
         } // End /api/submit
@@ -543,3 +589,18 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         return new Response(JSON.stringify({ error: errorMessage }), { status: status, headers: baseHeaders });
     }
 }; // End onRequest Handler
+
+
+// --- (Requirement 6) Helper function to convert rank to Chinese numerals ---
+function convertToChineseRank(rank: number): string { // 顯式指定 rank 參數類型為 number，並指定函數返回類型為 string
+    const chineseNumbers = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
+    if (rank <= 10) {
+        return chineseNumbers[rank];
+    } else if (rank < 20) {
+        return "十" + chineseNumbers[rank - 10];
+    } else if (rank % 10 === 0) {
+        return chineseNumbers[Math.floor(rank / 10)] + "十";
+    } else {
+        return chineseNumbers[Math.floor(rank / 10)] + "十" + chineseNumbers[rank % 10];
+    }
+}
