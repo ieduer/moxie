@@ -380,104 +380,155 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             return new Response(JSON.stringify(dataInfo), { headers: baseHeaders });
         }
 
-        // --- **AI-Powered**: Start Question Set API --- // << UPDATE 2 (V12): Replaced start_set logic >> // << MODIFIED for single-line contextual questions >>
+        // --- **AI-Powered**: Start Question Set API --- // << MODIFIED for specific contextual questions >>
         if (apiPath === 'start_set' && request.method === 'GET') {
-            console.log("Processing /api/start_set request using AI generation for single-line contextual questions");
+            console.log("Processing /api/start_set request using AI generation for specific contextual questions");
             if (kaoshifanweiData.length === 0) { throw new Error("處理後的考試範圍數據為空，無法出題。"); }
 
             const setId = crypto.randomUUID();
             const generatedQuestions: QuestionInfo[] = [];
             const generationPromises: Promise<void>[] = []; // Store promises for AI calls
 
-            // Filter sources
+            // --- Source Selection (Example: 2 Guwen, 2 Gushi) ---
+            // Filter sources (adjust categories as needed based on your kaoshifanwei.json structure)
             const guwenSources = kaoshifanweiData.filter(item => item.category === '文言文');
             const gushiSources = kaoshifanweiData.filter(item => item.category === '诗词曲');
 
-            if (guwenSources.length < 2 || gushiSources.length < 2) { throw new Error(`數據不足，無法選取足夠的文言文 (${guwenSources.length}) 或詩詞曲 (${gushiSources.length}) 來源。`); }
+            // Ensure enough sources exist
+            const requiredGuwen = 2;
+            const requiredGushi = 2;
+            if (guwenSources.length < requiredGuwen || gushiSources.length < requiredGushi) {
+                throw new Error(`數據不足，無法選取足夠的文言文 (${guwenSources.length}/${requiredGuwen}) 或詩詞曲 (${gushiSources.length}/${requiredGushi}) 來源。`);
+            }
 
-            // Select sources
-            const selectedGuwen = getRandomItems(guwenSources, 2);
-            const selectedGushi = getRandomItems(gushiSources, 2);
-            const selectedSources = [...selectedGuwen, ...selectedGushi]; // 4 sources total
+            // Select random sources
+            const selectedGuwen = getRandomItems(guwenSources, requiredGuwen);
+            const selectedGushi = getRandomItems(gushiSources, requiredGushi);
+            // Combine selected sources, ensuring exactly MAX_QUESTIONS_PER_SET are attempted if possible
+            const selectedSources = [...selectedGuwen, ...selectedGushi].slice(0, MAX_QUESTIONS_PER_SET);
 
-            // Generate questions concurrently using AI
+            console.log(`Attempting to generate ${selectedSources.length} questions from selected sources.`);
+
+            // --- Generate questions concurrently using AI ---
             selectedSources.forEach(sourceItem => {
                  const promise = (async () => {
-                     console.log(`Attempting AI question generation for source: ${sourceItem.title}`);
+                     console.log(`Attempting AI question generation for source: 《${sourceItem.title}》`);
                      try {
-                          // << UPDATE 1 & 2 (Feedback): Modified Prompt for Single-Line Contextual Questions >>
+                          // << ***** CRITICAL UPDATE 1: New Generation Prompt ***** >>
                          const generationPrompt = `
-                         你是一位經驗豐富的高中語文老師，正在為學生準備高考語文模擬測驗中的“默寫”部分。
-                         請嚴格參照 2024 年中國高考語文全國卷的真題樣式，特別是“根據提示語境默寫相應詩句”或“補寫出下列句子中的空缺部分”的題型。
-                         你的任務是根據我提供的【原文內容】，生成一道**單句**默寫題。
-                         具體要求：
-                         1.  從【原文內容】中選擇**連續的兩句**。
-                         2.  為這兩句詩文設置一個簡短、自然、貼切的**情境描述 (context)**，引導學生回憶。
-                         3.  根據選擇的兩句，生成包含**一個填空橫線 \`____\`** 的題目文本 (question)。
-                             *   如果適合挖空**上半句**，格式為 "情境描述。\n____，[下半句原文]。"。
-                             *   如果適合挖空**下半句**，格式為 "情境描述。\n[上半句原文]，____。"。
-                             *   請自行判斷哪種形式更合適，並確保題目文本包含情境和帶有單個橫線的詩句部分。**情境描述和詩句之間必須用換行符 '\\n' 分隔。**
-                         4.  提取需要填空的**單句原文**作為答案 (answer)。答案必須是**不包含換行符**的單個字符串。
-                         5.  **嚴格確保**答案就是【原文內容】中的一句，且與題目挖空部分完全對應。
-                         6.  返回結果必須是**單個 JSON 對象**，且只包含以下三個鍵： "context" (字符串), "question" (字符串，格式如上所述，包含 ____ 和 \\n), "answer" (字符串，**單句**)。不要包含任何 markdown 標記 ('\`\`\`json', '\`\`\`') 或其他額外文字。
+                         你是一位精通中國高考語文命題的專家。請嚴格遵循以下要求，根據提供的【原文內容】，生成一道符合高考“默寫”部分“情境提示”題型的題目。
 
-                         【原文內容】(${sourceItem.category} - ${sourceItem.title} - ${sourceItem.author || '佚名'}):
+                         **任務：**
+                         從【原文內容】中選取**連續的兩句**詩文，並圍繞這兩句設計一道包含“情境描述”和“填空”的題目。
+
+                         **具體要求：**
+                         1.  **選材：** 從【原文內容】中選取**連續的、意思相對完整的兩句**。
+                         2.  **情境設計：** 根據選取的兩句詩文，編寫一個**簡潔、貼切、能夠提示學生回憶起該詩句的描述語境 (context)**。語境應自然引出待填空的詩句。
+                         3.  **題目生成 (question)：**
+                             *   在情境描述後，另起一行（用 '\\n' 分隔）。
+                             *   將選取的兩句詩文，其中**一句**用橫線 \`____\` 代替，另一句保持原文。
+                             *   判斷挖空上半句還是下半句更合適、更符合常見考法。
+                             *   格式必須是以下兩種之一：
+                                 *   挖空上半句： "情境描述。\\n____，[下半句原文]。"
+                                 *   挖空下半句： "情境描述。\\n[上半句原文]，____。"
+                             *   **確保題目文本 (question) 中有且僅有一個 \`____\` 填空位，並且情境描述和詩句部分之間有換行符 \`\\n\`。**
+                         4.  **答案生成 (answer)：**
+                             *   提取被替換成 \`____\` 的那**一句完整的原文**作為答案。
+                             *   答案必須是**單個字符串**，不包含任何標點符號之外的換行符或多餘字符。
+                             *   答案必須與【原文內容】中的句子**完全一致**。
+                         5.  **輸出格式：**
+                             *   返回結果**必須是**一個 RFC 8259 標準的 JSON 對象。
+                             *   該 JSON 對象**僅能包含**以下三個鍵值對：
+                                 *   \`"context"\`: 字符串，你設計的情境描述。
+                                 *   \`"question"\`: 字符串，包含情境描述、換行符 '\\n' 和帶有 \`____\` 的詩句部分。
+                                 *   \`"answer"\`: 字符串，需要填寫的原句（即被替換的部分）。
+                             *   **禁止**在 JSON 內容之外添加任何解釋性文字、markdown 標記（如 \`\`\`json ... \`\`\`）、或其他任何字符。
+
+                         **【原文內容】**
+                         來源: ${sourceItem.category} - 《${sourceItem.title}》 - ${sourceItem.author || '佚名'} (${sourceItem.dynasty || '朝代不詳'})
+                         ---
                          ${sourceItem.content.join('\n')}
+                         ---
 
-                         請根據以上要求和原文生成 JSON 結果。`;
-
+                         請嚴格按照上述所有要求，生成 JSON 對象。`;
 
                          const generationContents: GeminiContent[] = [{ parts: [{ text: generationPrompt }] }];
-                         const aiResult = await callGeminiAPI(env.GEMINI_API_KEY, GEMINI_TEXT_MODEL, generationContents, { maxOutputTokens: 350, temperature: 0.6 });
+                         const aiResult = await callGeminiAPI(env.GEMINI_API_KEY, GEMINI_TEXT_MODEL, generationContents, { maxOutputTokens: 400, temperature: 0.5 }); // Adjusted temp slightly
 
                          const candidate = aiResult.candidates?.[0];
                          const part = candidate?.content?.parts?.[0];
                          let aiResponseText = '';
                          if (part && 'text' in part) {
                               aiResponseText = part.text.trim();
-                              aiResponseText = aiResponseText.replace(/^```json\s*|\s*```$/g, ''); // Remove potential markdown fences
-                         } else { throw new Error("AI did not return a text part."); }
+                              // Robustly remove potential markdown fences, even with leading/trailing whitespace
+                              aiResponseText = aiResponseText.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
+                         } else {
+                             throw new Error(`AI did not return a text part for 《${sourceItem.title}》.`);
+                         }
 
-                         console.log(`AI raw response for ${sourceItem.title}: ${aiResponseText}`);
-                         const parsed = JSON.parse(aiResponseText);
+                         console.log(`AI raw response for 《${sourceItem.title}》: ${aiResponseText}`);
+                         let parsed: any;
+                         try {
+                             parsed = JSON.parse(aiResponseText);
+                         } catch (jsonError: any) {
+                              console.error(`AI response JSON parsing failed for 《${sourceItem.title}》. Raw text: "${aiResponseText}". Error: ${jsonError.message}`);
+                              throw new Error("AI 返回的內容不是有效的 JSON 格式。");
+                         }
 
-                         // << UPDATE 1 & 2 (Feedback): Modified Validation for Single-Line Contextual Questions >>
-                         if (parsed && typeof parsed.context === 'string' &&
-                             typeof parsed.question === 'string' && typeof parsed.answer === 'string' &&
-                             parsed.question.includes('____') &&      // Contains at least one blank
-                             !parsed.question.match(/____.*____/) && // Does NOT contain more than one blank
-                             parsed.question.includes('\n') &&       // Question MUST contain newline between context and verse part
-                             !parsed.answer.includes('\n') &&        // Answer is single line
-                             parsed.answer.trim().length > 0) {      // Answer is not empty
 
-                             // Validate answer exists in source content
+                         // << ***** CRITICAL UPDATE 2: New Validation Logic ***** >>
+                         // Validate the structure and content of the parsed JSON
+                         if (parsed && typeof parsed.context === 'string' && parsed.context.trim() &&
+                             typeof parsed.question === 'string' && parsed.question.includes('____') &&
+                             (parsed.question.match(/____/g) || []).length === 1 && // Ensure EXACTLY one blank
+                             parsed.question.includes('\n') &&
+                             parsed.question.split('\n').length > 1 && // Ensure newline actually splits content
+                             typeof parsed.answer === 'string' && parsed.answer.trim() &&
+                             !parsed.answer.includes('\n'))
+                         {
                              const trimmedAnswer = parsed.answer.trim();
-                             // Looser check: see if the trimmed answer is part of ANY line in the source.
-                             // Stricter check (more prone to punctuation/whitespace issues): sourceItem.content.some(line => line.trim() === trimmedAnswer)
-                             const answerExists = sourceItem.content.some(line => line.includes(trimmedAnswer));
+                             const trimmedQuestion = parsed.question.trim(); // Use trimmed question for consistency
+
+                             // << ***** CRITICAL UPDATE 3: Verify Answer Exists in Source ***** >>
+                             // Check if the generated answer *exactly* matches one of the lines in the source content (after trimming)
+                             // Or, as a slightly looser fallback, check if it's contained within a line. Exact match is preferred.
+                             const answerExists = sourceItem.content.some(line => line.trim() === trimmedAnswer);
+                             // Optional: Add a looser check if the exact match fails often due to punctuation nuances AI might miss.
+                             // const answerContained = sourceItem.content.some(line => line.trim().includes(trimmedAnswer));
 
                              if (answerExists) {
+                                 // << ***** CRITICAL UPDATE 4: Populate QuestionInfo Correctly ***** >>
                                  const newQuestion: QuestionInfo = {
                                      id: crypto.randomUUID(),
-                                     // Question now includes context + \n + verse part with blank
-                                     question: parsed.question,
+                                     // Store the full AI-generated question string (context + \n + verse with blank)
+                                     question: trimmedQuestion,
                                      answer: trimmedAnswer, // Store trimmed answer
-                                     source: `${sourceItem.category} - 《${sourceItem.title}》 - ${sourceItem.author || '佚名'}`,
-                                     topic: "情境默寫 (2分)" // Keep topic generic or adjust if needed
+                                     source: `${sourceItem.category} - 《${sourceItem.title}》${sourceItem.author ? ` - ${sourceItem.author}` : ''}${sourceItem.dynasty ? ` (${sourceItem.dynasty})` : ''}`,
+                                     topic: "情境默寫 (2分)" // << Updated Topic
                                  };
-                                 generatedQuestions.push(newQuestion); // Concurrency safe push
-                                 console.log(`Successfully generated SINGLE-LINE CONTEXTUAL question from AI for ${sourceItem.title}`);
+                                 // Use a mutex or concurrent-safe push if this function were truly parallel beyond Promise.all waits
+                                 generatedQuestions.push(newQuestion);
+                                 console.log(`Successfully generated and validated AI question for 《${sourceItem.title}》.`);
                              } else {
-                                 console.warn(`AI generated SINGLE-LINE answer for ${sourceItem.title} not found in source. Answer: "${trimmedAnswer}" Source Lines:\n${sourceItem.content.map(l => ` - ${l}`).join('\n')}`);
-                                 throw new Error("AI generated answer not found in original content.");
+                                 console.warn(`AI Validation Failed for 《${sourceItem.title}》: Generated answer "${trimmedAnswer}" not found exactly in source lines:\n${sourceItem.content.map(l => ` - "${l.trim()}"`).join('\n')}`);
+                                 throw new Error("AI 生成的答案未在原文中找到。");
                              }
                          } else {
-                             console.error(`AI response JSON validation failed for SINGLE-LINE CONTEXTUAL question ${sourceItem.title}. Parsed:`, parsed, "Validation criteria: context(string), question(string, one ____, includes \\n), answer(string, no \\n, not empty)");
-                             throw new Error("AI response JSON validation failed (single-line contextual structure).");
+                             console.error(`AI response JSON validation failed for 《${sourceItem.title}》. Parsed object:`, parsed);
+                             console.error("Validation Criteria Check:");
+                             console.error(`  - context(string/non-empty): ${typeof parsed?.context === 'string' && !!parsed?.context?.trim()}`);
+                             console.error(`  - question(string): ${typeof parsed?.question === 'string'}`);
+                             console.error(`  - question includes '____': ${parsed?.question?.includes('____')}`);
+                             console.error(`  - question has exactly one '____': ${(parsed?.question?.match(/____/g) || []).length === 1}`);
+                             console.error(`  - question includes '\\n': ${parsed?.question?.includes('\n')}`);
+                             console.error(`  - question split by '\\n' > 1 part: ${(parsed?.question?.split('\n').length || 0) > 1}`);
+                             console.error(`  - answer(string/non-empty): ${typeof parsed?.answer === 'string' && !!parsed?.answer?.trim()}`);
+                             console.error(`  - answer no '\\n': ${!parsed?.answer?.includes('\n')}`);
+                             throw new Error("AI 返回的 JSON 結構或內容不符合要求。");
                          }
                      } catch (error: any) {
-                         console.error(`AI question generation failed for source ${sourceItem.title}:`, error);
-                         // Don't add question on failure
+                         console.error(`AI question generation failed for source 《${sourceItem.title}》:`, error.message);
+                         // Log the error but allow Promise.all to continue with other sources
                      }
                  })();
                  generationPromises.push(promise);
@@ -486,48 +537,48 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             // Wait for all concurrent AI generation calls to finish
             await Promise.all(generationPromises);
 
-            console.log(`Finished all AI generation attempts. Generated ${generatedQuestions.length} questions.`);
+            console.log(`Finished all AI generation attempts. Successfully generated ${generatedQuestions.length} questions.`);
 
-            // Handle cases where AI failed to generate enough questions
+            // --- Fallback Logic (Remains the same, but be aware of format difference) ---
             if (generatedQuestions.length < MAX_QUESTIONS_PER_SET) {
                 const needed = MAX_QUESTIONS_PER_SET - generatedQuestions.length;
-                console.warn(`AI Generation Warning: Only generated ${generatedQuestions.length} valid questions. Attempting fallback generation for ${needed} questions.`);
-                // **Use fallback pattern-based generation**
-                // Filter data to avoid reusing sources AI might have already processed
+                console.warn(`AI Generation Warning: Only generated ${generatedQuestions.length} valid questions meeting the criteria. Attempting fallback generation for ${needed} simpler questions.`);
+
+                // Filter data to avoid reusing sources AI *successfully* processed
                 const fallbackFanwei = kaoshifanweiData.filter(item =>
-                     !generatedQuestions.some(q => q.source.includes(item.title)) // Filter out sources used by successful AI generation
+                     !generatedQuestions.some(q => q.source.includes(`《${item.title}》`)) // Filter out sources used by successful AI generation
                  );
-                 // Call the FALLBACK function (renamed)
+
+                // Call the FALLBACK function (generates simpler questions)
                 const fallbackQuestions = generateQuestionSetFromFanweiFallback(fallbackFanwei, needed);
                 generatedQuestions.push(...fallbackQuestions);
-                console.log(`Added ${fallbackQuestions.length} fallback questions. Total: ${generatedQuestions.length}`);
+                console.log(`Added ${fallbackQuestions.length} fallback questions (simple format). Total questions: ${generatedQuestions.length}`);
             }
 
-            // Final check if we still don't have enough (e.g., fallback also failed)
+            // --- Final Checks and Response ---
              if (generatedQuestions.length === 0) {
-                  throw new Error("AI and fallback failed to generate any questions.");
+                  // This could happen if all AI attempts failed AND the fallback also generated nothing.
+                  throw new Error("AI and fallback failed to generate any questions. Possible issues: API errors, invalid source data, or overly strict validation.");
              }
-             if (generatedQuestions.length < MAX_QUESTIONS_PER_SET) {
-                 console.warn(`Warning: Could not generate a full set of ${MAX_QUESTIONS_PER_SET} questions. Proceeding with ${generatedQuestions.length}.`);
-             }
+             // Shuffle questions? Or keep sorted? Current sort is by source. Let's keep it sorted.
+            // generatedQuestions.sort((a, b) => a.source.localeCompare(b.source)); // Optional: Sort
 
-            // Ensure consistent order? Maybe sort by category then title?
-            // Example sort:
-            generatedQuestions.sort((a, b) => a.source.localeCompare(b.source)); // Sort by source string for some consistency
-
-            // Store the generated set (potentially partial or including fallbacks) in KV
+            // Store the generated set (potentially mixed formats if fallback was used) in KV
             const newSet: QuestionSet = { setId, questions: generatedQuestions, createdAt: Date.now() };
             try {
                 await env.SESSION_KV.put(setId, JSON.stringify(newSet), { expirationTtl: KV_EXPIRATION_TTL_SECONDS });
                 console.log(`Stored new question set in KV with setId: ${setId} (${generatedQuestions.length} questions)`);
             } catch (kvError: any) {
                 console.error(`KV put error for AI-generated setId ${setId}:`, kvError);
-                throw new Error(`無法保存 AI 生成的題組信息: ${kvError.message}`);
+                throw new Error(`無法保存生成的題組信息: ${kvError.message}`);
             }
 
+            // Prepare response for the frontend (without answers)
             const questionsForFrontend = newSet.questions.map(({ answer, ...rest }: QuestionInfo) => rest);
             return new Response(JSON.stringify({ setId: newSet.setId, questions: questionsForFrontend }), { headers: baseHeaders });
         } // End /api/start_set (AI version)
+
+        // ... (rest of the code for /api/submit, etc.)
 
 
         // API Endpoint to submit answers (image upload)
