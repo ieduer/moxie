@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>墨力全開 - AI 默寫教練 (拍照版 v3 - moni.json)</title>
+    <title>AI 默寫</title>
     <style>
         /* Styles remain largely the same, no changes needed */
         body { font-family: sans-serif; line-height: 1.6; padding: 20px; max-width: 800px; margin: 0 auto; background-color: #f9f9f9; }
@@ -88,10 +88,10 @@
     <script src="https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/dist/browser-image-compression.js"></script>
 </head>
 <body>
-    <h1>墨力全開 - AI 默寫教練 <span style="font-size: 0.7em; color: #777;">(拍照版 v3 - moni.json)</span></h1>
+    <h1>AI 默寫 <span style="font-size: 0.7em; color: #777;"></span></h1>
     <p style="text-align: center;"><strong>目標：高考默寫 8 分，必須拿滿！一分都不能少！</strong></p>
     <p style="text-align: center; color: orange; font-weight: bold;">
-        請將 4 道題的答案按順序清晰寫在紙上，然後拍照上傳。確保光線充足、字跡清晰、答案豎直排列！
+        請將 4 道題的答案按順序分四行，清晰寫在紙上，然後拍照上傳。確保光線充足、字跡清晰！
     </p>
 
     <div class="button-group">
@@ -102,7 +102,7 @@
     <div id="status">狀態：等待操作...</div>
 
     <div id="questions" style="display: none;">
-        <h2>請在紙上書寫以下內容 (共 8 分):</h2>
+        <h2>請在紙上書寫答案 (共 8 分):</h2>
         <p style="text-align: center; color: #777; font-style: italic;">
             <strong style="color: red;">請注意：</strong>
             請勿書寫題號，答案中**不要加標點符號**。
@@ -111,14 +111,14 @@
     </div>
 
     <div id="upload-section" style="display: none;">
-        <h2>拍照並上傳答案</h2>
+        <h2>拍照並上傳</h2>
         <label for="image-upload" id="image-upload-label">選擇或拍攝照片:</label>
         <input type="file" id="image-upload" name="image-upload" accept="image/*">  <!-- Requirement 1: Removed capture="environment" -->
         <div id="compression-info"></div>
         <div id="image-preview-container">
             <img id="image-preview" src="#" alt="圖片預覽">
         </div>
-         <button id="submit-btn" disabled>提交答案照片</button>
+         <button id="submit-btn" disabled>提交</button>
     </div>
 
     <div id="result" style="display: none;"></div>
