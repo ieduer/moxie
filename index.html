@@ -2,15 +2,15 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"> <!-- 禁用縮放 -->
-    <title>墨力全開 - AI 默寫教練</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>墨力全開 - AI 默寫教練 (拍照版)</title>
     <style>
-        /* 基本樣式保持不變 */
+        /* Basic styles remain similar */
         body { font-family: sans-serif; line-height: 1.6; padding: 20px; max-width: 800px; margin: 0 auto; background-color: #f9f9f9; }
         h1 { text-align: center; color: #333; }
         strong { color: #d9534f; }
-        #status, #questions, #result { margin-top: 20px; padding: 15px; border: 1px solid #ccc; border-radius: 8px; background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .question-item { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px dashed #eee; }
+        #status, #questions, #result, #upload-section { margin-top: 20px; padding: 15px; border: 1px solid #ccc; border-radius: 8px; background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .question-item { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px dashed #eee; }
         .question-item:last-child { border-bottom: none; }
         pre { background-color: #f4f4f4; padding: 10px; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; font-size: 0.9em; }
         button { padding: 12px 20px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 1em; transition: background-color 0.2s ease; margin-left: 5px; }
@@ -19,31 +19,24 @@
         .button-group { display: flex; gap: 10px; margin-bottom: 20px; justify-content: center;}
         h2 { margin-top: 0; color: #0056b3; }
         .underline-blank { text-decoration: underline; color: #aaa; display: inline-block; min-width: 10em; text-align: center;}
-        .answer-wrapper { margin-top: 10px; border: 1px solid #ddd; border-radius: 4px; background-color: #fff; }
-        .canvas-container { position: relative; width: 100%; height: 180px; border-bottom: 1px solid #eee;}
-        canvas {
-            display: block;
-            width: 100%;
-            height: 100%;
-            border-radius: 4px 4px 0 0;
-            touch-action: none; /* 必須保留 */
-            cursor: crosshair;
-        }
-        .controls { padding: 5px; text-align: right; }
-        .clear-btn { background-color: #f0ad4e; font-size: 0.9em; padding: 5px 10px;}
-        .clear-btn:hover { background-color: #ec971f; }
         .loading { font-style: italic; color: #555; }
         .result-item { margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
         .result-item p { margin: 5px 0; }
+        /* Styles for file upload and preview */
+        #upload-section { border-top: 2px solid #007bff; margin-top: 30px; }
+        #image-upload { display: block; margin-bottom: 15px; font-size: 1em; }
+        #image-preview-container { margin-top: 15px; text-align: center; }
+        #image-preview { max-width: 100%; max-height: 400px; border: 1px solid #ddd; border-radius: 4px; display: none; margin: 0 auto; }
+        #compression-info { font-size: 0.9em; color: #666; margin-top: 5px; }
     </style>
-    <!-- 引入 perfect-freehand 庫 -->
-    <script src="https://cdn.jsdelivr.net/npm/perfect-freehand@1.2.0/dist/perfect-freehand.min.js"></script>
+    <!-- **引入 browser-image-compression 庫** -->
+    <script src="https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/dist/browser-image-compression.js"></script>
 </head>
 <body>
-    <h1>墨力全開 - AI 默寫教練</h1>
+    <h1>墨力全開 - AI 默寫教練 (拍照版)</h1>
     <p style="text-align: center;"><strong>目標：高考默寫 8 分，必須拿滿！一分都不能少！</strong></p>
     <p style="text-align: center; color: orange; font-weight: bold;">
-        請務必使用工整、清晰的標準簡體字書寫，筆畫分明，避免潦草、連筆或過於藝術化的字體，否則 AI 可能無法正確識別！
+        請將 4 道題的答案按順序清晰寫在紙上，然後拍照上傳。確保光線充足、字跡清晰！
     </p>
 
     <div class="button-group">
@@ -52,11 +45,24 @@
     </div>
 
     <div id="status">狀態：等待操作...</div>
+
     <div id="questions" style="display: none;">
-        <h2>請默寫以下內容 (共 8 分):</h2>
+        <h2>請在紙上書寫以下內容 (共 8 分):</h2>
         <div id="question-list"></div>
-        <button id="submit-btn" style="margin-top: 20px; width: 100%;" disabled>提交答案</button>
+        <!-- **上傳區域移到題目列表之後** -->
     </div>
+
+    <div id="upload-section" style="display: none;">
+        <h2>拍照並上傳答案</h2>
+        <label for="image-upload">選擇或拍攝照片:</label>
+        <input type="file" id="image-upload" name="image-upload" accept="image/*">
+        <div id="compression-info"></div>
+        <div id="image-preview-container">
+            <img id="image-preview" src="#" alt="圖片預覽">
+        </div>
+         <button id="submit-btn" style="margin-top: 20px; width: 100%;" disabled>提交答案照片</button>
+    </div>
+
     <div id="result" style="display: none;"></div>
 
     <script>
@@ -64,295 +70,67 @@
         const statusDiv = document.getElementById('status');
         const questionsDiv = document.getElementById('questions');
         const questionListDiv = document.getElementById('question-list');
+        const uploadSection = document.getElementById('upload-section');
+        const imageUploadInput = document.getElementById('image-upload');
+        const imagePreview = document.getElementById('image-preview');
+        const compressionInfo = document.getElementById('compression-info');
         const resultDiv = document.getElementById('result');
         const getQuestionBtn = document.getElementById('get-question-btn');
         const checkBackendBtn = document.getElementById('check-backend-btn');
         const submitBtn = document.getElementById('submit-btn');
 
         let currentQuestions = [];
-        let canvasInstances = []; // 存儲每個 canvas 的狀態和數據
-
-        // perfect-freehand 繪圖選項
-        const drawOptions = {
-            size: 3,        // 筆觸基礎大小
-            thinning: 0.6,
-            smoothing: 0.5,
-            streamline: 0.5,
-            color: 'black',
-            last: false, // 默認不是最後一點
-        };
-        const drawOptionsLast = {...drawOptions, last: true }; // 抬筆時用
+        let currentSetId = null; // 存儲當前題組 ID
+        let compressedImageBlob = null; // 存儲壓縮後的圖片 Blob
 
         // --- 工具函數 ---
         function setLoadingState(button, isLoading, defaultText) {
-             if (isLoading) {
-                 button.disabled = true;
-                 button.textContent = '處理中...';
-             } else {
-                 button.disabled = false;
-                 button.textContent = defaultText;
-             }
+             if (isLoading) { button.disabled = true; button.textContent = '處理中...'; }
+             else { button.disabled = false; button.textContent = defaultText; }
         }
 
-        // 將 SVG 路徑數據轉換為字串，供 Path2D 使用
-        function getSvgPathFromStroke(stroke) {
-            if (!stroke || stroke.length < 1) return '';
-            const d = stroke.reduce(
-                (acc, [x0, y0], i, arr) => {
-                    const [x1, y1] = arr[(i + 1) % arr.length];
-                    acc.push(`Q ${x0},${y0} ${(x0 + x1) / 2},${(y0 + y1) / 2}`);
-                    return acc;
-                },
-                ['M', ...stroke[0], 'Q', ...stroke[0]]
-            );
-            return `${d.join(' ')} Z`;
-        }
-
-        // --- 核心修改：Canvas 交互邏輯 ---
-        function initializeCanvas(canvasElement, index) {
-            const ctx = canvasElement.getContext('2d');
-            let currentPoints = []; // 當前正在繪製的筆畫原始點 [x, y, pressure]
-            let savedStrokesPoints = []; // 保存所有完成筆畫的點序列
-            let isPointerDown = false;
-
-            // 設置 Canvas 繪圖屬性
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.fillStyle = drawOptions.color;
-
-            // 清除 Canvas
-            function clearCanvas() {
-                const dpr = window.devicePixelRatio || 1;
-                ctx.clearRect(0, 0, canvasElement.width / dpr, canvasElement.height / dpr);
-                savedStrokesPoints = [];
-                currentPoints = [];
-                canvasInstances[index].strokesPoints = savedStrokesPoints;
-                console.log(`Canvas ${canvasElement.id} cleared`);
-            }
-
-            // 繪製單個筆畫（填充方式）
-            function drawStrokeOutline(points, options) {
-                 if (!points || points.length === 0) return;
-                 const strokeOutline = perfectFreehand.getStroke(points, options);
-                 const pathData = getSvgPathFromStroke(strokeOutline);
-                 const path = new Path2D(pathData);
-                 ctx.fill(path);
-            }
-
-            // 重新繪製所有筆畫
-            function redrawCanvas() {
-                const dpr = window.devicePixelRatio || 1;
-                ctx.clearRect(0, 0, canvasElement.width / dpr, canvasElement.height / dpr);
-                savedStrokesPoints.forEach(points => {
-                    drawStrokeOutline(points, drawOptions);
-                });
-                drawStrokeOutline(currentPoints, drawOptions);
-            }
-
-            // 獲取事件相對於 canvas 的正確坐標，並考慮 DPI 缩放
-            function getPointRelativeToCanvas(event) {
-                const rect = canvasElement.getBoundingClientRect();
-                let x, y, pressure;
-                const scaleX = canvasElement.width / rect.width;
-                const scaleY = canvasElement.height / rect.height;
-                if (event.clientX !== undefined && event.clientY !== undefined) {
-                    x = (event.clientX - rect.left) * scaleX;
-                    y = (event.clientY - rect.top) * scaleY;
-                    pressure = event.pressure !== undefined && event.pressure > 0 ? event.pressure : 0.5;
-                }
-                else if (event.touches && event.touches.length > 0) {
-                    const touch = event.touches[0];
-                    x = (touch.clientX - rect.left) * scaleX;
-                    y = (touch.clientY - rect.top) * scaleY;
-                    pressure = 0.5;
-                }
-                else if (event.offsetX !== undefined && event.offsetY !== undefined) {
-                    x = event.offsetX;
-                    y = event.offsetY;
-                    pressure = 0.5;
-                } else {
-                    console.error("無法獲取坐標 from event:", event);
-                    return null;
-                }
-                return [x, y, pressure];
-            }
-
-            function handlePointerDown(event) {
-                // 只接受鼠標左鍵或觸控
-                if (event.button !== 0 && event.pointerType === 'mouse') return;
-                event.preventDefault();
-                isPointerDown = true;
-                const point = getPointRelativeToCanvas(event);
-                if (point) {
-                    currentPoints = [point];
-                    redrawCanvas();
-                }
-            }
-
-            function handlePointerMove(event) {
-                if (!isPointerDown) return;
-                const point = getPointRelativeToCanvas(event);
-                if (point) {
-                    currentPoints.push(point);
-                    redrawCanvas();
-                }
-            }
-
-            function handlePointerUp(event) {
-                if (!isPointerDown) return;
-                isPointerDown = false;
-                if (currentPoints.length > 0) {
-                    savedStrokesPoints.push([...currentPoints]);
-                    // 使用 last: true 繪製最終筆畫輪廓
-                    const finalStrokeOutline = perfectFreehand.getStroke(currentPoints, drawOptionsLast);
-                    redrawCanvas();
-                    const pathData = getSvgPathFromStroke(finalStrokeOutline);
-                    const path = new Path2D(pathData);
-                    ctx.fill(path);
-                }
-                currentPoints = [];
-            }
-
-            // 綁定 pointer 事件
-            canvasElement.addEventListener('pointerdown', handlePointerDown, { passive: false });
-            canvasElement.addEventListener('pointermove', handlePointerMove, { passive: false });
-            window.addEventListener('pointerup', handlePointerUp);
-            canvasElement.addEventListener('pointerleave', (e) => { if(isPointerDown) handlePointerUp(e); });
-            // 增加 touch 事件的綁定以兼容 iPad 及其他觸控設備
-            canvasElement.addEventListener('touchstart', handlePointerDown, { passive: false });
-            canvasElement.addEventListener('touchmove', handlePointerMove, { passive: false });
-            window.addEventListener('touchend', handlePointerUp);
-            canvasElement.addEventListener('touchcancel', handlePointerUp);
-
-            // 綁定清除按鈕
-            const clearButton = canvasElement.closest('.answer-wrapper').querySelector('.clear-btn');
-            if (clearButton) {
-                clearButton.addEventListener('click', (event) => {
-                    event.preventDefault();
-                    clearCanvas();
-                });
-            }
-
-            // 保存實例信息
-            canvasInstances[index] = {
-                canvas: canvasElement,
-                ctx: ctx,
-                strokesPoints: savedStrokesPoints,
-                clear: clearCanvas,
-                isEmpty: () => savedStrokesPoints.length === 0,
-                toDataURL: (type = 'image/png') => {
-                    const tempCanvas = document.createElement('canvas');
-                    const dpr = window.devicePixelRatio || 1;
-                    tempCanvas.width = canvasElement.width;
-                    tempCanvas.height = canvasElement.height;
-                    const tempCtx = tempCanvas.getContext('2d');
-                    tempCtx.fillStyle = 'white';
-                    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-                    tempCtx.scale(dpr, dpr);
-                    tempCtx.fillStyle = drawOptions.color;
-                    savedStrokesPoints.forEach(points => {
-                         if (points.length > 0) {
-                            const strokeOutline = perfectFreehand.getStroke(points, drawOptionsLast);
-                            const pathData = getSvgPathFromStroke(strokeOutline);
-                            const path = new Path2D(pathData);
-                            tempCtx.fill(path);
-                         }
-                    });
-                    return tempCanvas.toDataURL(type);
-                }
-            };
-
-            // 初始調整大小
-            resizeCanvas(canvasElement, index);
-        }
-
-        // --- 修改 resizeCanvas 函數 ---
-        function resizeCanvas(canvas, index) {
-             if (!canvas) return;
-            const ratio = Math.max(window.devicePixelRatio || 1, 1);
-            const width = canvas.offsetWidth;
-            const height = canvas.offsetHeight;
-
-            if (canvas.width !== width * ratio || canvas.height !== height * ratio) {
-                canvas.width = width * ratio;
-                canvas.height = height * ratio;
-                const ctx = canvas.getContext("2d");
-                ctx.scale(ratio, ratio);
-                console.log(`Canvas resized: ${canvas.id}, Ratio: ${ratio}, Width: ${canvas.width}, Height: ${canvas.height}`);
-
-                const instance = canvasInstances[index];
-                if (instance && instance.strokesPoints) {
-                     const redrawCtx = instance.ctx;
-                     redrawCtx.fillStyle = drawOptions.color;
-                     redrawCtx.lineCap = 'round';
-                     redrawCtx.lineJoin = 'round';
-                     redrawCtx.clearRect(0, 0, width, height);
-                     instance.strokesPoints.forEach(savedPoints => {
-                         if(savedPoints.length > 0){
-                            const strokeOutline = perfectFreehand.getStroke(savedPoints, drawOptionsLast);
-                            const pathData = getSvgPathFromStroke(strokeOutline);
-                            const path = new Path2D(pathData);
-                            redrawCtx.fill(path);
-                         }
-                     });
-                     console.log(`Redrawn canvas ${canvas.id} after resize.`);
-                }
-            }
-        }
-
-        // --- 獲取題目邏輯 (不變) ---
+        // --- 獲取題目邏輯 (請求後端獲取題目和 setId) ---
         getQuestionBtn.addEventListener('click', async () => {
             setLoadingState(getQuestionBtn, true, '開始挑戰');
-            statusDiv.textContent = '正在從後端獲取題目...';
+            statusDiv.textContent = '正在從後端獲取新題組...';
             resultDiv.style.display = 'none';
             questionsDiv.style.display = 'none';
+            uploadSection.style.display = 'none';
             questionListDiv.innerHTML = '';
             currentQuestions = [];
-            canvasInstances = [];
+            currentSetId = null;
+            compressedImageBlob = null; // 清空舊圖片
+            imagePreview.style.display = 'none'; // 隱藏預覽
+            imageUploadInput.value = ''; // 清空文件選擇
+            compressionInfo.textContent = '';
+            submitBtn.disabled = true;
 
             try {
-                const response = await fetch('/api/question');
+                // **假設後端 /api/start_set 返回 { setId: '...', questions: [...] }**
+                // 這裡暫時還用 /api/question 模擬獲取題目，並手動生成 setId
+                // 未來需要改成調用新的 /api/start_set 接口
+                const response = await fetch('/api/question'); // TODO: 替換為 /api/start_set
                 if (!response.ok) throw new Error(`HTTP 錯誤！狀態: ${response.status} ${response.statusText}`);
-                const questions = await response.json();
+                const questionsData = await response.json(); // 假設返回 questions 數組
 
-                if (questions && questions.length > 0) {
-                    currentQuestions = questions;
-                    statusDiv.textContent = '題目獲取成功！請作答。';
-                    canvasInstances = new Array(questions.length);
+                 // TODO: 從後端獲取 setId
+                 currentSetId = `set-${Date.now()}-${Math.random().toString(16).substring(2, 8)}`; // 臨時生成
 
-                    questions.forEach((q, index) => {
+                if (questionsData && questionsData.length > 0) {
+                    currentQuestions = questionsData;
+                    statusDiv.textContent = '獲取題組成功！請在紙上作答後拍照上傳。';
+                    questions.style.display = 'block'; // 顯示題目列表
+                    uploadSection.style.display = 'block'; // 顯示上傳區域
+
+                    questionsData.forEach((q, index) => {
                         const item = document.createElement('div');
                         item.classList.add('question-item');
                         const formattedQuestion = q.question.replace(/_+/g, '<span class="underline-blank"> </span>');
-                        item.innerHTML = `
-                            <p><strong>${index + 1}. (${q.topic || '2分'})</strong></p>
-                            <p>${formattedQuestion}</p>
-                            <div class="answer-wrapper">
-                                <div class="canvas-container">
-                                    <canvas id="canvas-${q.id}"></canvas>
-                                </div>
-                                <div class="controls">
-                                    <button class="clear-btn" type="button">清除</button>
-                                </div>
-                            </div>
-                        `;
+                        item.innerHTML = `<p><strong>${index + 1}. (${q.topic || '2分'})</strong> ${formattedQuestion}</p>`;
                         questionListDiv.appendChild(item);
                     });
-
-                    // 延時初始化以確保瀏覽器渲染完成
-                    setTimeout(() => {
-                          questions.forEach((q, index) => {
-                             const canvasElement = questionListDiv.querySelector(`#canvas-${q.id}`);
-                             if(canvasElement) {
-                                 initializeCanvas(canvasElement, index);
-                             }
-                          });
-                          questionsDiv.style.display = 'block';
-                          submitBtn.disabled = false;
-                     }, 50);
-
                 } else {
-                    statusDiv.textContent = '未能獲取有效題目。後端返回空數據。';
+                    statusDiv.textContent = '未能獲取有效題目。';
                 }
             } catch (error) {
                 console.error('獲取題目失敗:', error);
@@ -362,42 +140,90 @@
             }
         });
 
-        // --- 檢查後端狀態邏輯 (不變) ---
+        // --- 處理圖片選擇和壓縮 ---
+        imageUploadInput.addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (!file) {
+                compressedImageBlob = null;
+                imagePreview.style.display = 'none';
+                submitBtn.disabled = true;
+                compressionInfo.textContent = '';
+                return;
+            }
+
+            // 檢查文件類型
+            if (!file.type.startsWith('image/')) {
+                alert('請選擇圖片文件！');
+                imageUploadInput.value = ''; // 清空選擇
+                return;
+            }
+
+            // 顯示預覽
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                imagePreview.src = e.target.result;
+                imagePreview.style.display = 'block';
+            }
+            reader.readAsDataURL(file);
+
+            // 壓縮圖片
+            compressionInfo.textContent = '正在壓縮圖片...';
+            submitBtn.disabled = true; // 壓縮時禁用提交
+
+            const options = {
+                maxSizeMB: 1,          // 最大文件大小 (MB)
+                maxWidthOrHeight: 1920, // 最大寬度或高度
+                useWebWorker: true,    // 使用 Web Worker 加速 (如果可用)
+                // initialQuality: 0.8 // 可以設置初始質量
+            };
+
+            try {
+                // **使用 browser-image-compression 庫**
+                console.log(`原始圖片大小: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
+                compressedImageBlob = await imageCompression(file, options);
+                console.log(`壓縮後圖片大小: ${(compressedImageBlob.size / 1024 / 1024).toFixed(2)} MB`);
+                compressionInfo.textContent = `圖片已準備就緒 (大小: ${(compressedImageBlob.size / 1024 / 1024).toFixed(2)} MB)`;
+                submitBtn.disabled = false; // 壓縮完成，啟用提交
+            } catch (error) {
+                console.error('圖片壓縮失敗:', error);
+                compressionInfo.textContent = `圖片壓縮失敗: ${error.message}`;
+                compressedImageBlob = null;
+                imagePreview.style.display = 'none';
+                submitBtn.disabled = true;
+            }
+        });
+
+
+        // --- 檢查後端狀態邏輯 ---
         checkBackendBtn.addEventListener('click', async () => { /* ... 略 ... */ });
 
-        // --- 提交答案邏輯 ---
+        // --- 提交答案照片邏輯 ---
         submitBtn.addEventListener('click', async () => {
-            setLoadingState(submitBtn, true, '提交答案');
-            resultDiv.innerHTML = '<div class="loading">正在提交答案並等待 AI 評分...</div>';
+            if (!compressedImageBlob) {
+                alert('請先選擇並壓縮圖片！');
+                return;
+            }
+            if (!currentSetId) {
+                 alert('無法提交，缺少題組信息，請先獲取題目。');
+                 return;
+            }
+
+            setLoadingState(submitBtn, true, '提交答案照片');
+            resultDiv.innerHTML = '<div class="loading">正在上傳圖片並等待 AI 評分...</div>';
             resultDiv.style.display = 'block';
 
-            const answersData = [];
-            canvasInstances.forEach((instance, index) => {
-                if (!currentQuestions || !currentQuestions[index] || !instance) {
-                    console.error(`數據不一致或實例未找到 for index ${index}`);
-                    return;
-                }
-                const questionId = currentQuestions[index].id;
-                if (instance.isEmpty()) {
-                    answersData.push({ questionId: questionId, imageDataUrl: null });
-                } else {
-                    const dataUrl = instance.toDataURL('image/png');
-                    answersData.push({ questionId: questionId, imageDataUrl: dataUrl });
-                }
-            });
-
-             if (answersData.length !== currentQuestions.length) {
-                 console.error("收集到的答案數量與題目數量不匹配！");
-                 resultDiv.textContent = '提交失敗：內部錯誤，請重試。';
-                 setLoadingState(submitBtn, false, '提交答案');
-                 return;
-             }
+            // **使用 FormData 上傳**
+            const formData = new FormData();
+            formData.append('setId', currentSetId); // 傳遞題組 ID
+            // 將 Blob 對象作為文件上傳，第三個參數是文件名
+            formData.append('handwritingImage', compressedImageBlob, `answer_${currentSetId}.png`);
 
             try {
                 const response = await fetch('/api/submit', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ answers: answersData }),
+                    // **注意：使用 FormData 時，不要手動設置 Content-Type Header**
+                    // **瀏覽器會自動設置正確的 multipart/form-data 邊界**
+                    body: formData,
                 });
 
                 if (!response.ok) {
@@ -409,49 +235,50 @@
 
                 // --- 渲染評分結果 ---
                 let resultHTML = `<h2>評分結果 (總分: ${resultData.totalScore} / 8)</h2>`;
-                resultData.results.forEach((res, index) => {
-                    const boxColor = res.success ? (res.isCorrect ? '#5cb85c' : '#d9534f') : '#777';
-                    resultHTML += `<div class="result-item" style="border-color: ${boxColor};">`;
-                    resultHTML += `<p><strong>第 ${index + 1} 題 (得分: ${res.score !== undefined ? res.score : 'N/A'})</strong></p>`;
-                    if (res.success) {
-                        resultHTML += `<p>你的答案 (識別結果): <span style="font-weight: bold; color: ${res.isCorrect ? 'green' : 'red'};">${res.recognizedText || '[識別失敗]'}</span></p>`;
-                        if (!res.isCorrect && res.correctAnswer && res.correctAnswer !== "[未找到標準答案]") {
-                            resultHTML += `<p>正確答案: <span style="font-weight: bold;">${res.correctAnswer}</span></p>`;
+                if (resultData.results && Array.isArray(resultData.results)) {
+                    resultData.results.forEach((res, index) => {
+                        const boxColor = res.success ? (res.isCorrect ? '#5cb85c' : '#d9534f') : '#777';
+                        resultHTML += `<div class="result-item" style="border-color: ${boxColor};">`;
+                        resultHTML += `<p><strong>第 ${index + 1} 題 (得分: ${res.score !== undefined ? res.score : 'N/A'})</strong></p>`;
+                        if (res.success) {
+                             // 顯示識別結果和正確答案 (如果需要)
+                             resultHTML += `<p>識別結果: <span style="font-weight: bold; color: ${res.isCorrect ? 'green' : 'red'};">${res.recognizedText || '[未能識別]'}</span></p>`;
+                             if (!res.isCorrect && res.correctAnswer && res.correctAnswer !== "[未找到標準答案]") {
+                                 resultHTML += `<p>正確答案: <span style="font-weight: bold;">${res.correctAnswer}</span></p>`;
+                             }
+                             if(res.isCorrect) { resultHTML += `<p style="color: green;">回答正確！</p>`; }
+                             if (res.error) { resultHTML += `<p style="color: magenta;">處理提示: ${res.error}</p>`; } // 顯示分割等錯誤
+                        } else {
+                            resultHTML += `<p style="color: red;">處理失敗: ${res.error || '未知錯誤'}</p>`;
                         }
-                        if(res.isCorrect) { resultHTML += `<p style="color: green;">回答正確！</p>`; }
-                        if (res.r2Key === null && res.message === "Blank answer") { resultHTML += `<p style="color: orange;">你提交了空白答案。</p>`; }
-                        if (res.error && (res.error.includes("OCR") || res.error.includes("解析"))) { resultHTML += `<p style="color: magenta;">AI識別提示: ${res.error}</p>`; }
-                    } else { resultHTML += `<p style="color: red;">處理失敗: ${res.error || '未知錯誤'}</p>`; }
-                     resultHTML += `</div>`;
-                });
-                if (resultData.totalScore < 8) {
-                     resultHTML += `<p style="color: red; font-weight: bold; margin-top: 20px; text-align:center; font-size: 1.1em;">總分 ${resultData.totalScore}！離滿分差 ${8 - resultData.totalScore} 分！高考默寫一分都不能丟！回去好好練！</p>`;
+                         resultHTML += `</div>`;
+                    });
                 } else {
-                    resultHTML += `<p style="color: green; font-weight: bold; margin-top: 20px; text-align:center; font-size: 1.1em;">不錯，拿到滿分了！繼續保持！</p>`;
+                     resultHTML += `<p>無法解析評分結果。</p>`;
                 }
+
+                // 顯示總體評價/斥罵 (假設後端返回了 feedback 字段)
+                if (resultData.feedback) {
+                     const feedbackColor = resultData.totalScore === 8 ? 'green' : 'red';
+                     resultHTML += `<p style="color: ${feedbackColor}; font-weight: bold; margin-top: 20px; text-align:center; font-size: 1.1em;">${resultData.feedback}</p>`;
+                } else { // 基本的斥罵
+                     if (resultData.totalScore < 8) { resultHTML += `<p style="color: red; font-weight: bold; margin-top: 20px; text-align:center; font-size: 1.1em;">總分 ${resultData.totalScore}！離滿分差 ${8 - resultData.totalScore} 分！高考默寫一分都不能丟！回去好好練！</p>`; }
+                     else { resultHTML += `<p style="color: green; font-weight: bold; margin-top: 20px; text-align:center; font-size: 1.1em;">不錯，拿到滿分了！繼續保持！</p>`; }
+                }
+
                 resultDiv.innerHTML = resultHTML;
 
             } catch (error) {
                 console.error('提交答案失敗:', error);
                 resultDiv.textContent = `提交答案失敗: ${error.message}`;
             } finally {
-                setLoadingState(submitBtn, false, '提交答案');
+                setLoadingState(submitBtn, false, '提交答案照片');
             }
         });
 
-        // --- 窗口尺寸變化監聽器 ---
-        let resizeTimeout;
-        window.addEventListener("resize", () => {
-             clearTimeout(resizeTimeout);
-             resizeTimeout = setTimeout(() => {
-                 console.log("Window resized, adjusting canvases...");
-                 canvasInstances.forEach((instance, idx) => {
-                      if (instance && instance.canvas.offsetWidth > 0 && instance.canvas.offsetHeight > 0) {
-                         resizeCanvas(instance.canvas, idx);
-                      }
-                 });
-             }, 250);
-        });
+        // --- 窗口大小變化監聽器 (此版本不需要操作 Canvas) ---
+        // window.addEventListener("resize", () => { ... }); // 可以移除或留空
+
     </script>
 </body>
 </html>
