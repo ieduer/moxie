@@ -6,7 +6,7 @@ import zhentiData from '../../data/zhenti.json'; // Keep for potential future re
 // Assuming kaoshifanwei.json has the structure { "文言文": [...], "诗词曲": [...] }
 import kaoshifanweiRawData from '../../data/kaoshifanwei.json';
 
-// --- Constants --- // << UPDATE 1: Constants Updated >>
+// --- Constants --- // << UPDATE 1: Constants Updated (V12) >>
 const KV_EXPIRATION_TTL_SECONDS = 3600; // 1 hour
 // ** 使用用戶指定的模型名稱 **
 const GEMINI_VISION_MODEL = "gemini-2.0-flash-thinking-exp-01-21"; // User specified vision model
@@ -163,7 +163,7 @@ function flattenKaoshiFanweiData(rawData: KaoshiFanweiRawStructure): KaoshiFanwe
 }
 
 
-// --- **FALLBACK** Question Generation Logic --- // << UPDATE 3: Renamed functions/variables for Fallback >>
+// --- **FALLBACK** Question Generation Logic --- // << UPDATE 3 (V12): Renamed functions/variables for Fallback >>
 
 // Defines the signature for a function that creates a question from lines
 type QuestionPattern = (lines: string[], sourceInfo: string) => QuestionInfo | null;
@@ -380,9 +380,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             return new Response(JSON.stringify(dataInfo), { headers: baseHeaders });
         }
 
-        // --- **AI-Powered**: Start Question Set API --- // << UPDATE 2: Replaced start_set logic >>
+        // --- **AI-Powered**: Start Question Set API --- // << UPDATE 2 (V12): Replaced start_set logic >> // << MODIFIED for single-line contextual questions >>
         if (apiPath === 'start_set' && request.method === 'GET') {
-            console.log("Processing /api/start_set request using AI generation");
+            console.log("Processing /api/start_set request using AI generation for single-line contextual questions");
             if (kaoshifanweiData.length === 0) { throw new Error("處理後的考試範圍數據為空，無法出題。"); }
 
             const setId = crypto.randomUUID();
@@ -405,25 +405,29 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                  const promise = (async () => {
                      console.log(`Attempting AI question generation for source: ${sourceItem.title}`);
                      try {
+                          // << UPDATE 1 & 2 (Feedback): Modified Prompt for Single-Line Contextual Questions >>
                          const generationPrompt = `
                          你是一位經驗豐富的高中語文老師，正在為學生準備高考語文模擬測驗中的“默寫”部分。
-                         請嚴格參照 2024 年中國高考語文全國卷的真題樣式，特別是“補寫出下列句子中的空缺部分”或“根據提示語境默寫相應詩句”的題型。
-                         你的任務是根據我提供的【原文內容】，生成一道默寫題。
+                         請嚴格參照 2024 年中國高考語文全國卷的真題樣式，特別是“根據提示語境默寫相應詩句”或“補寫出下列句子中的空缺部分”的題型。
+                         你的任務是根據我提供的【原文內容】，生成一道**單句**默寫題。
                          具體要求：
-                         1. 題目必須考察【原文內容】中**連續的兩句**。
-                         2. 需要為題目設置一個簡短的**情境描述 (context)**，引導學生回憶這兩句詩文。情境應自然貼切，符合高考風格。
-                         3. 生成包含**兩個連續的填空橫線 \`____\`** 的題目文本 (question)，橫線代表需要學生默寫的兩句。如果原文適合挖空上半句，則格式為 "____，____，[下文提示句]"；如果適合挖空下半句，則格式為 "[上文提示句]，____，____。"。請自行判斷哪種形式更合適。
-                         4. 提取需要填空的**完整兩句原文**作為答案 (answer)，兩句之間應用換行符 '\\n' 分隔。
-                         5. **嚴格確保**答案就是【原文內容】中的連續兩句，且與題目挖空部分完全對應。
-                         6. 返回結果必須是**單個 JSON 對象**，且只包含以下三個鍵： "context" (字符串), "question" (字符串，包含 ____), "answer" (字符串，包含 \\n)。不要包含任何 markdown 標記 ('\`\`\`json', '\`\`\`') 或其他額外文字。
+                         1.  從【原文內容】中選擇**連續的兩句**。
+                         2.  為這兩句詩文設置一個簡短、自然、貼切的**情境描述 (context)**，引導學生回憶。
+                         3.  根據選擇的兩句，生成包含**一個填空橫線 \`____\`** 的題目文本 (question)。
+                             *   如果適合挖空**上半句**，格式為 "情境描述。\n____，[下半句原文]。"。
+                             *   如果適合挖空**下半句**，格式為 "情境描述。\n[上半句原文]，____。"。
+                             *   請自行判斷哪種形式更合適，並確保題目文本包含情境和帶有單個橫線的詩句部分。**情境描述和詩句之間必須用換行符 '\\n' 分隔。**
+                         4.  提取需要填空的**單句原文**作為答案 (answer)。答案必須是**不包含換行符**的單個字符串。
+                         5.  **嚴格確保**答案就是【原文內容】中的一句，且與題目挖空部分完全對應。
+                         6.  返回結果必須是**單個 JSON 對象**，且只包含以下三個鍵： "context" (字符串), "question" (字符串，格式如上所述，包含 ____ 和 \\n), "answer" (字符串，**單句**)。不要包含任何 markdown 標記 ('\`\`\`json', '\`\`\`') 或其他額外文字。
 
                          【原文內容】(${sourceItem.category} - ${sourceItem.title} - ${sourceItem.author || '佚名'}):
                          ${sourceItem.content.join('\n')}
 
                          請根據以上要求和原文生成 JSON 結果。`;
 
+
                          const generationContents: GeminiContent[] = [{ parts: [{ text: generationPrompt }] }];
-                         // Use the specified text model (GEMINI_TEXT_MODEL)
                          const aiResult = await callGeminiAPI(env.GEMINI_API_KEY, GEMINI_TEXT_MODEL, generationContents, { maxOutputTokens: 350, temperature: 0.6 });
 
                          const candidate = aiResult.candidates?.[0];
@@ -437,27 +441,39 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                          console.log(`AI raw response for ${sourceItem.title}: ${aiResponseText}`);
                          const parsed = JSON.parse(aiResponseText);
 
-                         if (parsed && typeof parsed.context === 'string' && typeof parsed.question === 'string' && typeof parsed.answer === 'string' && parsed.question.includes('____') && parsed.answer.includes('\n') && parsed.answer.split('\n').length >= 2) {
-                             const answerLines = parsed.answer.split('\n');
-                             // Basic check if answer exists in source (might need refinement)
-                             if (sourceItem.content.join('\n').includes(answerLines[0]) && sourceItem.content.join('\n').includes(answerLines[1])) {
-                                const newQuestion: QuestionInfo = {
-                                    id: crypto.randomUUID(),
-                                    question: `${parsed.context}\n${parsed.question}`,
-                                    answer: parsed.answer,
-                                    source: `${sourceItem.category} - 《${sourceItem.title}》 - ${sourceItem.author || '佚名'}`,
-                                    topic: "情境默寫 (2分)" // Fixed topic description
-                                };
-                                // This push inside async might lead to non-deterministic order of questions
-                                generatedQuestions.push(newQuestion);
-                                console.log(`Successfully generated question from AI for ${sourceItem.title}`);
+                         // << UPDATE 1 & 2 (Feedback): Modified Validation for Single-Line Contextual Questions >>
+                         if (parsed && typeof parsed.context === 'string' &&
+                             typeof parsed.question === 'string' && typeof parsed.answer === 'string' &&
+                             parsed.question.includes('____') &&      // Contains at least one blank
+                             !parsed.question.match(/____.*____/) && // Does NOT contain more than one blank
+                             parsed.question.includes('\n') &&       // Question MUST contain newline between context and verse part
+                             !parsed.answer.includes('\n') &&        // Answer is single line
+                             parsed.answer.trim().length > 0) {      // Answer is not empty
+
+                             // Validate answer exists in source content
+                             const trimmedAnswer = parsed.answer.trim();
+                             // Looser check: see if the trimmed answer is part of ANY line in the source.
+                             // Stricter check (more prone to punctuation/whitespace issues): sourceItem.content.some(line => line.trim() === trimmedAnswer)
+                             const answerExists = sourceItem.content.some(line => line.includes(trimmedAnswer));
+
+                             if (answerExists) {
+                                 const newQuestion: QuestionInfo = {
+                                     id: crypto.randomUUID(),
+                                     // Question now includes context + \n + verse part with blank
+                                     question: parsed.question,
+                                     answer: trimmedAnswer, // Store trimmed answer
+                                     source: `${sourceItem.category} - 《${sourceItem.title}》 - ${sourceItem.author || '佚名'}`,
+                                     topic: "情境默寫 (2分)" // Keep topic generic or adjust if needed
+                                 };
+                                 generatedQuestions.push(newQuestion); // Concurrency safe push
+                                 console.log(`Successfully generated SINGLE-LINE CONTEXTUAL question from AI for ${sourceItem.title}`);
                              } else {
-                                  console.warn(`AI generated answer for ${sourceItem.title} not found verbatim in source. Answer: ${parsed.answer}`);
-                                  throw new Error("AI generated answer not found in original content.");
+                                 console.warn(`AI generated SINGLE-LINE answer for ${sourceItem.title} not found in source. Answer: "${trimmedAnswer}" Source Lines:\n${sourceItem.content.map(l => ` - ${l}`).join('\n')}`);
+                                 throw new Error("AI generated answer not found in original content.");
                              }
                          } else {
-                             console.error(`AI response JSON validation failed for ${sourceItem.title}. Parsed:`, parsed);
-                             throw new Error("AI response JSON validation failed.");
+                             console.error(`AI response JSON validation failed for SINGLE-LINE CONTEXTUAL question ${sourceItem.title}. Parsed:`, parsed, "Validation criteria: context(string), question(string, one ____, includes \\n), answer(string, no \\n, not empty)");
+                             throw new Error("AI response JSON validation failed (single-line contextual structure).");
                          }
                      } catch (error: any) {
                          console.error(`AI question generation failed for source ${sourceItem.title}:`, error);
@@ -465,7 +481,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                      }
                  })();
                  generationPromises.push(promise);
-            });
+            }); // End forEach
 
             // Wait for all concurrent AI generation calls to finish
             await Promise.all(generationPromises);
@@ -477,9 +493,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 const needed = MAX_QUESTIONS_PER_SET - generatedQuestions.length;
                 console.warn(`AI Generation Warning: Only generated ${generatedQuestions.length} valid questions. Attempting fallback generation for ${needed} questions.`);
                 // **Use fallback pattern-based generation**
-                // Filter data to avoid reusing sources AI might have already processed (if needed, depends on fallback strategy)
+                // Filter data to avoid reusing sources AI might have already processed
                 const fallbackFanwei = kaoshifanweiData.filter(item =>
-                     !selectedSources.some(sel => sel.id === item.id) // Example: filter out already selected sources
+                     !generatedQuestions.some(q => q.source.includes(item.title)) // Filter out sources used by successful AI generation
                  );
                  // Call the FALLBACK function (renamed)
                 const fallbackQuestions = generateQuestionSetFromFanweiFallback(fallbackFanwei, needed);
@@ -518,7 +534,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         if (apiPath === 'submit' && request.method === 'POST') {
             console.log("Processing /api/submit request");
 
-            // --- Request Parsing and Validation --- // << UPDATE 4: Replaced validation logic >>
+            // --- Request Parsing and Validation --- // << UPDATE 4 (V12): Replaced validation logic >>
             const formData = await request.formData();
             const setIdValue = formData.get('setId'); // Type: FormDataEntryValue | null
             const imageValue = formData.get('handwritingImage'); // Type: FormDataEntryValue | null
@@ -613,7 +629,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             const base64ImageData = arrayBufferToBase64(imageBuffer); // Use buffer from validated imageFile
             const ocrStartTime = Date.now();
             let recognizedTextCombined = '';
-            let ocrError: string | null = null;
+            let ocrError: string | null = null; // Specific OCR errors
             let splitAnswers: string[] = [];
             // Construct the OCR prompt dynamically based on the expected number of questions
             const ocrContents: GeminiContent[] = [{
@@ -624,7 +640,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             }];
 
             try {
-                 // Use constant defined at the top << UPDATE 5 implicit >>
+                 // Use constant defined at the top << UPDATE 5 (V12) implicit >>
                 const geminiResult = await callGeminiAPI(env.GEMINI_API_KEY, GEMINI_VISION_MODEL, ocrContents, { maxOutputTokens: 800, temperature: 0.1 });
                 const ocrDuration = Date.now() - ocrStartTime;
                 console.log(`Gemini OCR completed for setId ${setId} in ${ocrDuration}ms.`);
@@ -635,13 +651,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 if (part && 'text' in part) {
                     recognizedTextCombined = part.text.trim();
                 } else {
-                    ocrError = "AI返回了非預期的響應格式。";
+                    ocrError = "AI OCR 返回了非預期的響應格式。"; // Specific OCR error
                     console.warn(`OCR Result format issue for setId ${setId}. Part:`, part);
                 }
 
                 // Process recognized text if no format error and text is not empty
                 if (!ocrError && !recognizedTextCombined) {
-                    ocrError = "AI未能識別出任何文本內容。";
+                    ocrError = "AI OCR 未能識別出任何文本內容。"; // Specific OCR error
                     console.warn(`OCR Result empty for setId ${setId}`);
                 } else if (!ocrError) {
                     console.log(`Raw OCR result for setId ${setId}: "${recognizedTextCombined.replace(/\n/g, '\\n')}"`);
@@ -651,7 +667,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                     // Compare split count with the actual number of questions expected for this set
                     if (splitAnswers.length !== expectedQuestionCount) {
                         console.warn(`OCR split count mismatch for setId ${setId}: expected ${expectedQuestionCount}, got ${splitAnswers.length}.`);
-                        ocrError = `AI未能準確分割出 ${expectedQuestionCount} 個答案 (找到了 ${splitAnswers.length} 個)。`;
+                        ocrError = `AI OCR 未能準確分割出 ${expectedQuestionCount} 個答案 (找到了 ${splitAnswers.length} 個)。`; // Specific OCR error
                         // Pad or truncate to match the expected number for the results array structure
                         while (splitAnswers.length < expectedQuestionCount) splitAnswers.push("[答案提取失敗]");
                         if (splitAnswers.length > expectedQuestionCount) splitAnswers = splitAnswers.slice(0, expectedQuestionCount);
@@ -661,7 +677,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 }
             } catch (err: any) {
                  console.error(`Gemini OCR API call failed for setId ${setId}:`, err);
-                 ocrError = `AI 識別服務調用失敗: ${err.message}`;
+                 ocrError = `AI OCR 識別服務調用失敗: ${err.message}`; // Specific OCR error
                  // Ensure splitAnswers array has the correct length for the scoring loop, filled with error placeholders
                  splitAnswers = Array(expectedQuestionCount).fill(`[AI調用失敗]`);
             }
@@ -680,33 +696,40 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 const questionId = questionIds[i];
                 let isCorrect = false;
                 let score = 0;
-                // Determine success based on OCR error and specific recognition status
-                let success = !ocrError || (recognized !== "[答案提取失敗]" && recognized !== "[AI調用失敗]");
+                // Determine success based ONLY on whether the recognized text is an error placeholder
+                let success = !recognized.startsWith("[") || recognized === "[無法識別]"; // Success is true unless it's an explicit extraction/call failure
 
+                // Check correctness only if successfully recognized (even if AI said "无法识别")
                 if (success && correct !== undefined) {
                     isCorrect = recognized === correct; // Strict comparison
                     // Handle specific case where AI explicitly couldn't recognize
                     if (recognized === "[無法識別]") {
-                        isCorrect = false;
-                        success = false; // Mark as unsuccessful if AI couldn't recognize
+                        isCorrect = false; // Mark as incorrect if AI couldn't recognize
                     }
                     // Assign score dynamically
                     score = isCorrect ? pointsPerQuestion : 0;
-                } else if (!success && !ocrError) {
-                    // If no general OCR error, likely due to padding or '[無法識別]'
-                    ocrError = ocrError || "部分答案未能成功識別或提取。";
                 }
+
+                 // Assign specific error message for the item if it wasn't successful recognition
+                let itemError: string | undefined = undefined;
+                if (recognized === "[無法識別]") {
+                     itemError = "AI 無法識別此答案";
+                     success = false; // Also mark item-level success as false if unrecognizable
+                } else if (recognized === "[答案提取失敗]" || recognized === "[AI調用失敗]" || recognized === "[答案缺失]") {
+                     itemError = recognized.substring(1, recognized.length - 1); // Use inner text as error
+                     success = false; // Mark item-level success as false
+                }
+
 
                 results.push({
                      questionIndex: i,
                      questionId: questionId,
-                     success: success,
+                     success: success, // Reflects if *this specific item* was recognized okay
                      recognizedText: recognized,
                      correctAnswer: correct || "[標準答案缺失]",
                      isCorrect: isCorrect,
                      score: score,
-                     // Include placeholder error text if success is false
-                     error: !success && recognized.startsWith("[") ? recognized : undefined
+                     error: itemError // Specific error for this item
                 });
                 totalScore += score;
             }
@@ -715,16 +738,17 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             console.log(`Scoring complete for setId ${setId}. Total score: ${totalScore} / 8`);
 
 
-            // --- Generate Feedback using AI ---
+            // --- Generate Feedback using AI --- // << MODIFIED for separate feedback error handling >>
             let feedback = "";
             const feedbackStartTime = Date.now();
+            let feedbackErrorMsg: string | null = null; // << UPDATE 3 (Feedback): New variable for feedback errors >>
+
             // Check score against the target of 8
             if (totalScore === 8) {
                  feedback = `滿分 8 分！不錯，繼續保持這種狀態！`;
             } else {
                 // Prepare details for the feedback prompt
                 const incorrectResults = results.filter(r => !r.isCorrect);
-                // Explicitly type 'r' in map callback
                 const errorDetails = incorrectResults
                     .map((r: SubmissionResult) => `第 ${r.questionIndex + 1} 題:\n  你的答案: "${r.recognizedText}"\n  正確答案: "${r.correctAnswer}"`)
                     .join('\n\n');
@@ -735,17 +759,16 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 學生總分: ${totalScore.toFixed(1)} / 8
                 錯誤題目詳情:
                 ${errorDetails || "雖然未滿分，但未能定位具體錯誤文本（可能是 AI 識別問題）。"}
-                ${ocrError ? `\n系統提示: ${ocrError}` : ''}
+                ${ocrError ? `\n系統提示 (OCR): ${ocrError}` : ''}
 
                 請直接生成訓斥文字，不要加任何開頭或結尾的客套話。`;
 
                 try {
                     console.log(`Generating AI feedback for setId ${setId}...`);
                     const feedbackContents: GeminiContent[] = [{ parts: [{ text: feedbackPrompt }] }];
-                    // Use constant defined at the top << UPDATE 5 implicit >>
+                     // Use constant defined at the top << UPDATE 5 (V12) implicit >>
                     const feedbackResult = await callGeminiAPI(env.GEMINI_API_KEY, GEMINI_TEXT_MODEL, feedbackContents, { maxOutputTokens: 500, temperature: 0.7 });
 
-                    // Safely access the text part of the feedback response
                     const feedbackPart = feedbackResult.candidates?.[0]?.content?.parts?.[0];
                     if (feedbackPart && 'text' in feedbackPart) {
                         feedback = feedbackPart.text.trim();
@@ -753,25 +776,37 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                         console.log(`AI feedback generated successfully for setId ${setId} in ${feedbackDuration}ms.`);
                     } else {
                          console.warn(`AI feedback generation returned no text/unexpected format for setId ${setId}. Falling back.`);
-                         // Append feedback error to existing ocrError if any
-                         ocrError = (ocrError ? ocrError + "; " : "") + "AI反饋生成異常。";
+                         // << UPDATE 3 (Feedback): Set specific feedback error message >>
+                         feedbackErrorMsg = "AI 反饋生成返回格式異常。";
                          feedback = `總分 ${totalScore.toFixed(1)}！錯了 ${ (8 - totalScore).toFixed(1)} 分！自己好好反省！\n${errorDetails || '(無法生成詳細反饋)'}`; // Fallback feedback
                     }
                 } catch (feedbackError: any) {
                     console.error(`Gemini feedback generation failed for setId ${setId}:`, feedbackError);
-                    ocrError = (ocrError ? ocrError + "; " : "") + `AI反饋生成失敗: ${feedbackError.message}`;
+                     // << UPDATE 3 (Feedback): Set specific feedback error message >>
+                    feedbackErrorMsg = `AI 反饋生成服務調用失敗: ${feedbackError.message}`;
                     feedback = `總分 ${totalScore.toFixed(1)}！錯了 ${(8 - totalScore).toFixed(1)} 分！問題嚴重！回去好好反思！\n${errorDetails || '(無法生成詳細反饋)'}`; // Fallback feedback on error
                 }
             }
 
-            // --- Prepare Final Response ---
+            // --- Prepare Final Response --- // << UPDATE 3 (Feedback): Modified response structure >>
+             // Determine overall message based on errors
+            let finalMessage = "評分完成。";
+            if (ocrError && feedbackErrorMsg) {
+                finalMessage = "評分完成，但 OCR 識別和 AI 反饋生成均遇到問題。";
+            } else if (ocrError) {
+                finalMessage = "評分完成，但 OCR 識別過程遇到問題。";
+            } else if (feedbackErrorMsg) {
+                finalMessage = "評分完成，但 AI 反饋生成過程遇到問題。";
+            }
+
             const responseData = {
-                message: ocrError ? "評分完成，但 AI 處理過程遇到問題。" : "評分完成。",
-                totalScore: totalScore, // Return the potentially fractional score, frontend can format
+                message: finalMessage,          // Consolidated status message
+                totalScore: totalScore,
                 results: results,
-                feedback: feedback,
-                r2Key: r2Key, // Include R2 key for potential debugging
-                ocrIssue: ocrError // Pass any accumulated error messages
+                feedback: feedback,             // Always includes feedback (could be fallback)
+                r2Key: r2Key,
+                ocrIssue: ocrError,             // Pass any *general* OCR error message (if any)
+                feedbackIssue: feedbackErrorMsg // Pass feedback specific error message (if any)
             };
             // Return the response to the client
             return new Response(JSON.stringify(responseData), { headers: baseHeaders });

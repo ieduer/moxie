@@ -12,7 +12,9 @@
         #status, #questions, #result, #upload-section { margin-top: 20px; padding: 15px; border: 1px solid #ccc; border-radius: 8px; background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .question-item { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px dashed #eee; }
         .question-item:last-child { border-bottom: none; }
-        .question-text { font-weight: bold; margin-left: 5px; } /* Style for question text */
+        /* Updated question styling for context + verse */
+        .question-context { display: block; margin-bottom: 5px; font-style: italic; color: #555; }
+        .question-verse { font-weight: bold; margin-left: 5px; } /* Style for verse part */
         .question-source { font-size: 0.85em; color: #666; margin-left: 10px;} /* Style for source */
         pre { background-color: #f4f4f4; padding: 10px; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; font-size: 0.9em; color: #333; border: 1px solid #ddd;}
         button { padding: 12px 20px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 1em; transition: background-color 0.2s ease; margin: 5px; } /* Add margin */
@@ -53,6 +55,21 @@
         #image-preview { max-width: 90%; max-height: 400px; border: 1px solid #ddd; border-radius: 4px; display: none; margin: 10px auto; box-shadow: 0 0 5px rgba(0,0,0,0.1); }
         #compression-info { font-size: 0.9em; color: #666; margin-top: 10px; text-align: center; min-height: 1.2em; }
         #submit-btn { margin-top: 20px; width: calc(100% - 10px); /* Adjust width slightly */ } /* Make submit button full width */
+
+        /* Style for processing hints */
+        .processing-hints {
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ffeeba;
+            background-color: #fff3cd;
+            color: #856404;
+            border-radius: 4px;
+        }
+        .processing-hints p {
+            margin: 5px 0;
+            font-weight: bold;
+        }
+
     </style>
     <!-- **引入 browser-image-compression 庫** -->
     <script src="https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/dist/browser-image-compression.js"></script>
@@ -136,9 +153,25 @@
 
         function displayError(message, container = statusDiv) {
              console.error("Error:", message);
+             // Use innerHTML to allow simple HTML tags like <br> if needed
              container.innerHTML = `<p class="error-message">錯誤：${message}</p>`;
              container.style.display = 'block'; // Ensure error container is visible
         }
+
+        // Function to safely escape HTML to prevent XSS
+         function escapeHtml(unsafe) {
+            if (typeof unsafe !== 'string') {
+                 console.warn("escapeHtml called with non-string:", unsafe);
+                 return String(unsafe); // Convert non-strings to strings
+            }
+            return unsafe
+                 .replace(/&/g, "&")
+                 .replace(/</g, "<")
+                 .replace(/>/g, ">")
+                 .replace(/"/g, """)
+                 .replace(/'/g, "'");
+         }
+
 
         // --- Event Listeners ---
 
@@ -149,7 +182,7 @@
             statusDiv.textContent = '正在從後端獲取新題組...';
 
             try {
-                // **Call the new /api/start_set endpoint**
+                // **Call the /api/start_set endpoint**
                 const response = await fetch('/api/start_set');
                  // Check for non-OK HTTP status first
                  if (!response.ok) {
@@ -171,22 +204,27 @@
                     questionsDiv.style.display = 'block';
                     uploadSection.style.display = 'block'; // Show upload section only after getting questions
 
-                // Display questions
-                currentQuestions.forEach((q, index) => { // <--- CORRECTED: Use currentQuestions
-                    const item = document.createElement('div');
-                    item.classList.add('question-item');
-                    // Replace multiple underscores with a single span for styling
-                    // Make sure q.question exists and is a string
-                    const questionString = q.question || ""; // Default to empty string if undefined
-                    const formattedQuestion = questionString.replace(/_{2,}/g, '<span class="underline-blank"> </span>'); // Use   for empty blanks
-                    item.innerHTML = `
-                        <p>
-                            <strong>${index + 1}.</strong>
-                            <span class="question-text">${formattedQuestion}</span>
-                            <span class="question-source">(${q.topic || '2分'} | 來源: ${q.source || '未知'})</span>
-                         </p>`;
-                    questionListDiv.appendChild(item);
-                });
+                    // Display questions
+                    currentQuestions.forEach((q, index) => {
+                        const item = document.createElement('div');
+                        item.classList.add('question-item');
+                        const questionString = q.question || "";
+                        const parts = questionString.split('\n'); // Split context and verse
+                        const context = parts[0] || "";
+                        const versePart = parts.length > 1 ? parts[1] : ""; // Verse is the second part
+
+                        // Format verse part with blank
+                        const formattedVerse = escapeHtml(versePart).replace(/_{2,}/g, '<span class="underline-blank"> </span>'); // Use   for empty blanks
+
+                        item.innerHTML = `
+                            <p>
+                                <strong>${index + 1}.</strong>
+                                <span class="question-context">${escapeHtml(context)}</span>
+                                <span class="question-verse">${formattedVerse}</span>
+                                <span class="question-source">(${escapeHtml(q.topic || '2分')} | 來源: ${escapeHtml(q.source || '未知')})</span>
+                             </p>`;
+                        questionListDiv.appendChild(item);
+                    });
 
                 } else {
                     throw new Error('未能從後端獲取有效的題組數據。');
@@ -257,7 +295,7 @@
                  const response = await fetch('/api/hello');
                  if (!response.ok) throw new Error(`HTTP ${response.status}`);
                  const data = await response.json();
-                 statusDiv.innerHTML = `後端狀態：<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                 statusDiv.innerHTML = `後端狀態：<pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
              } catch (error) {
                  displayError(`無法連接後端或後端錯誤: ${error.message}`);
              } finally {
@@ -311,21 +349,29 @@
                 // --- Render Results ---
                 let resultHTML = `<h2>評分結果 (總分: ${resultData.totalScore ?? 'N/A'} / 8)</h2>`;
 
-                 // Display OCR/Processing Issues if any
+                 // << UPDATE: Display Processing Hints (OCR/Feedback Issues) >>
+                 let hintsHTML = '';
                  if (resultData.ocrIssue) {
-                     resultHTML += `<p class="error-message">處理提示：${resultData.ocrIssue}</p>`;
+                     hintsHTML += `<p>OCR 提示：${escapeHtml(resultData.ocrIssue)}</p>`;
                  }
-
+                 if (resultData.feedbackIssue) {
+                    hintsHTML += `<p>Feedback 提示：${escapeHtml(resultData.feedbackIssue)}</p>`;
+                 }
+                 // Only show the hints container if there are hints
+                 if (hintsHTML) {
+                    resultHTML += `<div class="processing-hints">${hintsHTML}</div>`;
+                 }
+                 // << END UPDATE >>
 
                 if (resultData.results && Array.isArray(resultData.results)) {
                     resultData.results.forEach((res, index) => {
                         const isCorrect = res.isCorrect;
                         const score = res.score !== undefined ? res.score : 'N/A';
-                        const recognized = res.recognizedText || '[未能識別]';
-                        const correct = res.correctAnswer || '[標準答案缺失]';
+                        const recognized = escapeHtml(res.recognizedText || '[未能識別]');
+                        const correct = escapeHtml(res.correctAnswer || '[標準答案缺失]');
                         // Determine border color based on success/correctness
                         let borderColor = '#ccc'; // Default
-                         if (res.success === false || recognized === '[無法識別]' || recognized.startsWith('[')) {
+                         if (res.success === false || recognized.startsWith('[') ) { // Simplified check for error placeholders
                              borderColor = '#aaa'; // Grey for processing errors/unrecognized
                          } else if (isCorrect) {
                              borderColor = '#5cb85c'; // Green for correct
@@ -339,14 +385,14 @@
 
                          // Display recognized and correct answers clearly
                          resultHTML += `<p><span class="label">識別結果:</span> <span class="recognized-text ${!isCorrect && res.success ? 'incorrect-answer-text' : ''}">${recognized}</span></p>`;
-                         // Only show correct answer if different or if there was an error
-                         if (!isCorrect || !res.success) {
+                         // Only show correct answer if different or if there was an item-level error
+                         if (!isCorrect || !res.success || res.error) { // Show correct answer if wrong or specific item error
                             resultHTML += `<p><span class="label">正確答案:</span> <span class="correct-answer-text">${correct}</span></p>`;
                          }
 
-                         // Add specific error for this item if present
+                         // Add specific item-level error if present (e.g., "[無法識別]")
                          if (res.error) {
-                             resultHTML += `<p style="color: magenta; font-size: 0.9em;">項目錯誤: ${res.error}</p>`;
+                             resultHTML += `<p style="color: magenta; font-size: 0.9em;">項目提示: ${escapeHtml(res.error)}</p>`;
                          }
                         resultHTML += `</div>`; // Close result-item
                     });
@@ -358,14 +404,15 @@
                 // Display Overall Feedback (Scolding/Praise)
                 if (resultData.feedback) {
                      const feedbackClass = (resultData.totalScore === 8) ? 'feedback-success' : 'feedback-fail';
-                     resultHTML += `<div class="feedback-box ${feedbackClass}"><pre>${resultData.feedback}</pre></div>`; // Use <pre> to respect newlines
+                      // Use <pre> to respect newlines from AI feedback, apply escapeHtml for safety
+                     resultHTML += `<div class="feedback-box ${feedbackClass}"><pre>${escapeHtml(resultData.feedback)}</pre></div>`;
                 } else {
                      // Basic fallback feedback if backend didn't provide one
                      const basicFeedback = (resultData.totalScore === 8)
                          ? "滿分！表現不錯！"
                          : `總分 ${resultData.totalScore}！未達滿分，需要加強！`;
                     const fallbackClass = (resultData.totalScore === 8) ? 'feedback-success' : 'feedback-fail';
-                     resultHTML += `<div class="feedback-box ${fallbackClass}"><p>${basicFeedback}</p></div>`;
+                     resultHTML += `<div class="feedback-box ${fallbackClass}"><p>${escapeHtml(basicFeedback)}</p></div>`;
                 }
 
                 resultDiv.innerHTML = resultHTML;
