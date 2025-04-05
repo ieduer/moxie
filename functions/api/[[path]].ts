@@ -18,7 +18,6 @@ const MAX_QUESTIONS_PER_SET = 4; // Target number of questions from moni.json
 // (Requirement 1 & 2) Define type for items in moni.json
 interface MoniQuestion {
     type: string;
-    topic: string;
     question: string;
     reference_answer: string; // Key name matches the JSON file
 }
@@ -28,8 +27,6 @@ interface QuestionInfo {
     id: string; // Unique ID for this specific question instance in the set
     question: string; // The question text from moni.json
     answer: string; // The reference_answer from moni.json
-    source: string; // Info about the original type/topic from moni.json
-    topic?: string; // The topic description from moni.json
 }
 
 // For the entire set stored in KV
@@ -145,34 +142,41 @@ async function callGeminiAPI(apiKey: string, model: string, contents: GeminiCont
 
 // --- **TYPE GUARD for moni.json data** --- (Requirement 1 & 2)
 function isValidMoniData(data: any): data is MoniQuestion[] {
+    console.log("isValidMoniData: Function called"); 
+
     if (!Array.isArray(data)) {
-        console.error("isValidMoniData: Input is not an array.", data); // Log the actual data
-        return false;
+        const errorMessage = "Data is not an array."; // More specific error
+        console.error("isValidMoniData: Input is not an array.", data); 
+        // Include detail in the returned error message
+        throw new Error(errorMessage); 
     }
     if (data.length === 0) {
+        const errorMessage = "Data array is empty."; // More specific error
         console.error("isValidMoniData: Array is empty.");
-        return false;
+        // Include detail in the returned error message
+        throw new Error(errorMessage);
     }
     const sample = data[0];
     const isValid = typeof sample?.type === 'string' &&
-                    typeof sample?.topic === 'string' &&
                     typeof sample?.question === 'string' &&
                     typeof sample?.reference_answer === 'string';
     if (!isValid) {
-        console.error("isValidMoniData: First item structure is invalid.", sample); // Log the sample item
-        console.error("Types:", { // Log types of each property to help diagnose
+        const errorMessage = "First item in data array is invalid. Structure is incorrect."; // More specific
+        console.error("isValidMoniData: First item structure is invalid.", sample); 
+        console.error("Types:", { 
             type: typeof sample?.type,
-            topic: typeof sample?.topic,
             question: typeof sample?.question,
             reference_answer: typeof sample?.reference_answer
         });
+        // Include detail in the returned error message
+        throw new Error(errorMessage);
     }
     return isValid;
 }
 
-
 // --- Main Request Handler ---
 export const onRequest: PagesFunction<Env> = async (context) => {
+    console.log("onRequest: API request received");
     const { request, env, params } = context;
     const url = new URL(request.url);
     const apiPath = (params.path as string[] || []).join('/');
@@ -241,7 +245,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                     id: crypto.randomUUID(), // Generate unique ID for this instance
                     question: moniQ.question,
                     answer: moniQ.reference_answer,
-                    topic: moniQ.topic, // Use the topic from moni.json
                     source: moniQ.type // Use the type field as the source category
                 };
             });
