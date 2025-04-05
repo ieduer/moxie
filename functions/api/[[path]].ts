@@ -746,6 +746,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             // Check score against the target of 8
             if (totalScore === 8) {
                  feedback = `滿分 8 分！不錯，繼續保持這種狀態！`;
+                 // <<< ADDED CORRECTION: Clear error message on full score as well >>>
+                 feedbackErrorMsg = null;
+                 // <<< END CORRECTION >>>
             } else {
                 // Prepare details for the feedback prompt
                 const incorrectResults = results.filter(r => !r.isCorrect);
@@ -763,29 +766,36 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
                 請直接生成訓斥文字，不要加任何開頭或結尾的客套話。`;
 
+                // ================= START OF UPDATED BLOCK =================
                 try {
                     console.log(`Generating AI feedback for setId ${setId}...`);
                     const feedbackContents: GeminiContent[] = [{ parts: [{ text: feedbackPrompt }] }];
-                     // Use constant defined at the top << UPDATE 5 (V12) implicit >>
                     const feedbackResult = await callGeminiAPI(env.GEMINI_API_KEY, GEMINI_TEXT_MODEL, feedbackContents, { maxOutputTokens: 500, temperature: 0.7 });
-
                     const feedbackPart = feedbackResult.candidates?.[0]?.content?.parts?.[0];
+
+                    // Successfully got feedback text
                     if (feedbackPart && 'text' in feedbackPart) {
                         feedback = feedbackPart.text.trim();
+                        // <<<<< CORRECTION: Clear error message on success >>>>>
+                        feedbackErrorMsg = null;
+                        // <<<<< END CORRECTION >>>>>
                         const feedbackDuration = Date.now() - feedbackStartTime;
                         console.log(`AI feedback generated successfully for setId ${setId} in ${feedbackDuration}ms.`);
-                    } else {
+                    }
+                    // Feedback generation returned unexpected format
+                    else {
                          console.warn(`AI feedback generation returned no text/unexpected format for setId ${setId}. Falling back.`);
-                         // << UPDATE 3 (Feedback): Set specific feedback error message >>
                          feedbackErrorMsg = "AI 反饋生成返回格式異常。";
                          feedback = `總分 ${totalScore.toFixed(1)}！錯了 ${ (8 - totalScore).toFixed(1)} 分！自己好好反省！\n${errorDetails || '(無法生成詳細反饋)'}`; // Fallback feedback
                     }
-                } catch (feedbackError: any) {
+                }
+                // Feedback generation API call failed
+                catch (feedbackError: any) {
                     console.error(`Gemini feedback generation failed for setId ${setId}:`, feedbackError);
-                     // << UPDATE 3 (Feedback): Set specific feedback error message >>
                     feedbackErrorMsg = `AI 反饋生成服務調用失敗: ${feedbackError.message}`;
                     feedback = `總分 ${totalScore.toFixed(1)}！錯了 ${(8 - totalScore).toFixed(1)} 分！問題嚴重！回去好好反思！\n${errorDetails || '(無法生成詳細反饋)'}`; // Fallback feedback on error
                 }
+                // ================== END OF UPDATED BLOCK ==================
             }
 
             // --- Prepare Final Response --- // << UPDATE 3 (Feedback): Modified response structure >>
