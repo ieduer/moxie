@@ -164,12 +164,15 @@
                  console.warn("escapeHtml called with non-string:", unsafe);
                  return String(unsafe); // Convert non-strings to strings
             }
+            // Chain replace calls correctly
             return unsafe
                  .replace(/&/g, "&")
                  .replace(/</g, "<")
                  .replace(/>/g, ">")
-                 .replace(/"/g, """)
-                 .replace(/'/g, "'");
+                 // << FINAL CORRECTION: Use single quotes for the replacement string literal >>
+                 .replace(/"/g, '"')
+                 // << END FINAL CORRECTION >>
+                 .replace(/'/g, "'"); // Ensure this line ends with a semicolon if it's the last in the chain for the return statement.
          }
 
 
@@ -216,12 +219,17 @@
                         // Format verse part with blank
                         const formattedVerse = escapeHtml(versePart).replace(/_{2,}/g, '<span class="underline-blank"> </span>'); // Use   for empty blanks
 
+                        // Prepare source string beforehand (Robust fix from previous attempt)
+                        const topicText = escapeHtml(q.topic || "2分");
+                        const sourceText = escapeHtml(q.source || "未知");
+                        const sourceInfoString = `(${topicText} | 來源: ${sourceText})`;
+
                         item.innerHTML = `
                             <p>
                                 <strong>${index + 1}.</strong>
                                 <span class="question-context">${escapeHtml(context)}</span>
                                 <span class="question-verse">${formattedVerse}</span>
-                                <span class="question-source">(${escapeHtml(q.topic || '2分')} | 來源: ${escapeHtml(q.source || '未知')})</span>
+                                <span class="question-source">${sourceInfoString}</span> {/* Use the prepared string */}
                              </p>`;
                         questionListDiv.appendChild(item);
                     });
@@ -349,7 +357,7 @@
                 // --- Render Results ---
                 let resultHTML = `<h2>評分結果 (總分: ${resultData.totalScore ?? 'N/A'} / 8)</h2>`;
 
-                 // << UPDATE: Display Processing Hints (OCR/Feedback Issues) >>
+                 // Display Processing Hints (OCR/Feedback Issues)
                  let hintsHTML = '';
                  if (resultData.ocrIssue) {
                      hintsHTML += `<p>OCR 提示：${escapeHtml(resultData.ocrIssue)}</p>`;
@@ -361,7 +369,6 @@
                  if (hintsHTML) {
                     resultHTML += `<div class="processing-hints">${hintsHTML}</div>`;
                  }
-                 // << END UPDATE >>
 
                 if (resultData.results && Array.isArray(resultData.results)) {
                     resultData.results.forEach((res, index) => {
