@@ -3,50 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>墨力全開 - AI 默寫教練 (拍照版 v2)</title>
+    <title>墨力全開 - AI 默寫教練 (拍照版 v3 - moni.json)</title>
     <style>
-        /* Styles remain largely the same as provided before */
+        /* Styles remain largely the same */
         body { font-family: sans-serif; line-height: 1.6; padding: 20px; max-width: 800px; margin: 0 auto; background-color: #f9f9f9; }
         h1 { text-align: center; color: #333; }
-        strong { color: #d9534f; } /* Make strong elements red for emphasis */
+        strong { color: #d9534f; }
         #status, #questions, #result, #upload-section { margin-top: 20px; padding: 15px; border: 1px solid #ccc; border-radius: 8px; background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .question-item { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px dashed #eee; }
         .question-item:last-child { border-bottom: none; }
-        /* Updated question styling for context + verse */
-        .question-context { display: block; margin-bottom: 5px; font-style: italic; color: #555; }
-        .question-verse { font-weight: bold; margin-left: 5px; } /* Style for verse part */
-        .question-source { font-size: 0.85em; color: #666; margin-left: 10px;} /* Style for source */
+        /* Adjusted styling for moni.json format */
+        .question-text { display: block; margin-bottom: 5px; font-weight: bold; } /* The main question text */
+        .question-details { font-size: 0.85em; color: #666; margin-left: 5px;} /* Topic and Source Type */
+
         pre { background-color: #f4f4f4; padding: 10px; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; font-size: 0.9em; color: #333; border: 1px solid #ddd;}
-        button { padding: 12px 20px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 1em; transition: background-color 0.2s ease; margin: 5px; } /* Add margin */
+        button { padding: 12px 20px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 1em; transition: background-color 0.2s ease, transform 0.1s ease; margin: 5px; }
+        button:active:not(:disabled) { transform: scale(0.98); } /* Add press effect */
         button:hover:not(:disabled) { background-color: #0056b3; }
         button:disabled { background-color: #ccc; cursor: not-allowed; opacity: 0.7; }
-        .button-group { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; justify-content: center; } /* Allow wrapping */
+        .button-group { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; justify-content: center; }
         h2 { margin-top: 0; color: #0056b3; border-bottom: 2px solid #eee; padding-bottom: 5px;}
-        /* Underline style for blanks - improved visibility */
+        /* Underline style for blanks in question text (if any) */
         .underline-blank {
-            text-decoration: none; /* Remove default underline */
-            border-bottom: 1.5px solid #888; /* Use border for better control */
-            padding: 0 0.5em; /* Add some padding inside the blank */
+            text-decoration: none;
+            border-bottom: 1.5px solid #888;
+            padding: 0 0.5em;
             color: #888;
             display: inline-block;
-            min-width: 8em; /* Adjust as needed */
+            min-width: 6em; /* Adjusted slightly */
             text-align: center;
-            font-weight: normal; /* Ensure it doesn't inherit bold */
+            font-weight: normal;
          }
         .loading { font-style: italic; color: #555; text-align: center; padding: 20px; font-size: 1.1em; }
-        .result-item { margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        .result-item { margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; border-left-width: 5px; border-left-style: solid;} /* Combined border */
         .result-item p { margin: 8px 0; }
-        .result-item strong { color: #333; } /* Keep title strong black */
+        .result-item strong { color: #333; }
         .result-item .label { font-weight: bold; color: #555; min-width: 70px; display: inline-block;}
         .recognized-text { font-weight: bold; padding: 2px 4px; border-radius: 3px; }
         .correct-answer-text { font-weight: bold; color: #1a7431; background-color: #e8f5e9; padding: 2px 4px; border-radius: 3px;}
-        .incorrect-answer-text { color: #c62828; background-color: #ffebee; }
-        .correct-tick { color: green; font-weight: bold; }
-        .incorrect-cross { color: red; font-weight: bold; }
-        .error-message { color: #d9534f; font-weight: bold; margin-top: 10px; }
-         .feedback-box { margin-top: 25px; padding: 15px; border-radius: 5px; font-size: 1.1em; text-align: center; white-space: pre-wrap; /* Preserve line breaks from AI */ word-wrap: break-word; }
-        .feedback-success { background-color: #dff0d8; border: 1px solid #d6e9c6; color: #3c763d; }
-        .feedback-fail { background-color: #f2dede; border: 1px solid #ebccd1; color: #a94442; font-weight: bold;}
+        .incorrect-answer-text { color: #c62828; background-color: #ffebee; } /* Applied when recognized != correct */
+        .unrecognized-text { color: #757575; background-color: #f5f5f5; font-style: italic; } /* For [無法識別] etc */
+        .correct-tick { color: green; font-weight: bold; margin-left: 5px; }
+        .incorrect-cross { color: red; font-weight: bold; margin-left: 5px; }
+        .error-message { color: #d9534f; font-weight: bold; margin-top: 10px; padding: 10px; background-color: #f2dede; border: 1px solid #ebccd1; border-radius: 4px;}
+        .feedback-box { margin-top: 25px; padding: 15px; border-radius: 5px; font-size: 1.1em; text-align: center; white-space: pre-wrap; word-wrap: break-word; border: 1px solid; }
+        /* Feedback Styles (Requirement 3 & 4) */
+        .feedback-success { background-color: #dff0d8; border-color: #d6e9c6; color: #3c763d; font-weight: bold; }
+        .feedback-fail { background-color: #f2dede; border-color: #ebccd1; color: #a94442; font-weight: bold; font-size: 1.2em; /* Make scolding more prominent */ }
+
         /* Styles for file upload and preview */
         #upload-section { border-top: 2px solid #007bff; margin-top: 30px; }
         #image-upload-label { display: block; margin-bottom: 10px; font-weight: bold; }
@@ -54,7 +58,7 @@
         #image-preview-container { margin-top: 15px; text-align: center; }
         #image-preview { max-width: 90%; max-height: 400px; border: 1px solid #ddd; border-radius: 4px; display: none; margin: 10px auto; box-shadow: 0 0 5px rgba(0,0,0,0.1); }
         #compression-info { font-size: 0.9em; color: #666; margin-top: 10px; text-align: center; min-height: 1.2em; }
-        #submit-btn { margin-top: 20px; width: calc(100% - 10px); /* Adjust width slightly */ } /* Make submit button full width */
+        #submit-btn { margin-top: 20px; width: calc(100% - 10px); }
 
         /* Style for processing hints */
         .processing-hints {
@@ -64,10 +68,20 @@
             background-color: #fff3cd;
             color: #856404;
             border-radius: 4px;
+            font-size: 0.9em;
         }
-        .processing-hints p {
-            margin: 5px 0;
-            font-weight: bold;
+        .processing-hints p { margin: 5px 0; font-weight: bold; }
+        .item-hint { color: magenta; font-size: 0.9em; margin-top: 5px; font-style: italic; } /* For item-specific errors like [無法識別] */
+
+        /* --- Praise Animation --- (Requirement 3) */
+        @keyframes celebrate {
+            0% { transform: scale(1); background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            50% { transform: scale(1.05); background-color: #dff0d8; box-shadow: 0 8px 16px rgba(60, 118, 61, 0.4); }
+            100% { transform: scale(1); background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        }
+        .full-marks-celebration {
+            animation: celebrate 1.5s ease-in-out;
+            border-color: #28a745 !important; /* Ensure border changes */
         }
 
     </style>
@@ -75,7 +89,7 @@
     <script src="https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/dist/browser-image-compression.js"></script>
 </head>
 <body>
-    <h1>墨力全開 - AI 默寫教練 (拍照版 v2)</h1>
+    <h1>墨力全開 - AI 默寫教練 <span style="font-size: 0.7em; color: #777;">(拍照版 v3 - moni.json)</span></h1>
     <p style="text-align: center;"><strong>目標：高考默寫 8 分，必須拿滿！一分都不能少！</strong></p>
     <p style="text-align: center; color: orange; font-weight: bold;">
         請將 4 道題的答案按順序清晰寫在紙上，然後拍照上傳。確保光線充足、字跡清晰、答案豎直排列！
@@ -91,13 +105,12 @@
     <div id="questions" style="display: none;">
         <h2>請在紙上書寫以下內容 (共 8 分):</h2>
         <div id="question-list"></div>
-        <!-- 上傳區域移到題目列表之後 -->
     </div>
 
     <div id="upload-section" style="display: none;">
         <h2>拍照並上傳答案</h2>
         <label for="image-upload" id="image-upload-label">選擇或拍攝照片:</label>
-        <input type="file" id="image-upload" name="image-upload" accept="image/*" capture="environment"> <!-- Added capture -->
+        <input type="file" id="image-upload" name="image-upload" accept="image/*" capture="environment">
         <div id="compression-info"></div>
         <div id="image-preview-container">
             <img id="image-preview" src="#" alt="圖片預覽">
@@ -123,20 +136,27 @@
 
         // --- State Variables ---
         let currentQuestions = [];
-        let currentSetId = null; // Stores the current question set ID from backend
-        let compressedImageBlob = null; // Stores the compressed image Blob object
-        let isSubmitting = false; // Prevent double submission
+        let currentSetId = null;
+        let compressedImageBlob = null;
+        let isSubmitting = false;
 
         // --- Utility Functions ---
         function setLoadingState(button, isLoading, defaultText = '操作') {
              button.disabled = isLoading;
              button.textContent = isLoading ? '處理中...' : defaultText;
+             // Add/remove loading class if needed for styling
+             if (isLoading) {
+                button.classList.add('loading-active'); // Add a class if you want specific loading styles
+             } else {
+                button.classList.remove('loading-active');
+             }
         }
 
         function resetUI() {
             statusDiv.textContent = '狀態：等待操作...';
             resultDiv.style.display = 'none';
             resultDiv.innerHTML = '';
+            resultDiv.classList.remove('full-marks-celebration'); // Ensure animation class is removed
             questionsDiv.style.display = 'none';
             uploadSection.style.display = 'none';
             questionListDiv.innerHTML = '';
@@ -144,22 +164,25 @@
             currentSetId = null;
             compressedImageBlob = null;
             imagePreview.style.display = 'none';
-            imagePreview.src = '#'; // Reset preview src
-            imageUploadInput.value = ''; // Clear file selection
+            imagePreview.src = '#';
+            imageUploadInput.value = '';
             compressionInfo.textContent = '';
             submitBtn.disabled = true;
             isSubmitting = false;
+            setLoadingState(getQuestionBtn, false, '開始挑戰'); // Re-enable start button
+            setLoadingState(submitBtn, false, '提交答案照片'); // Ensure submit is reset
+            setLoadingState(checkBackendBtn, false, '檢查後端狀態'); // Ensure check button is reset
         }
 
         function displayError(message, container = statusDiv) {
              console.error("Error:", message);
-             // Use innerHTML to allow simple HTML tags like <br> if needed
-             container.innerHTML = `<p class="error-message">錯誤：${message}</p>`;
-             container.style.display = 'block'; // Ensure error container is visible
+             // Sanitize message before inserting as HTML
+             const safeMessage = escapeHtml(message);
+             container.innerHTML = `<div class="error-message">錯誤：${safeMessage}</div>`;
+             container.style.display = 'block';
         }
 
-        // Function to safely escape HTML to prevent XSS
-         function escapeHtml(unsafe) {
+        function escapeHtml(unsafe) {
             if (typeof unsafe !== 'string') {
                  console.warn("escapeHtml called with non-string:", unsafe);
                  return String(unsafe); // Convert non-strings to strings
@@ -176,25 +199,24 @@
          }
 
 
+
         // --- Event Listeners ---
 
-        // Start Challenge Button
         getQuestionBtn.addEventListener('click', async () => {
-            resetUI(); // Reset everything before starting a new challenge
+            resetUI();
             setLoadingState(getQuestionBtn, true, '開始挑戰');
             statusDiv.textContent = '正在從後端獲取新題組...';
+            statusDiv.style.display = 'block'; // Show status
 
             try {
-                // **Call the /api/start_set endpoint**
                 const response = await fetch('/api/start_set');
-                 // Check for non-OK HTTP status first
                  if (!response.ok) {
-                     let errorMsg = `HTTP 錯誤！狀態: ${response.status} ${response.statusText}`;
-                     try { // Try to parse potential JSON error from backend
+                     let errorMsg = `HTTP 錯誤！狀態: ${response.status}`;
+                     try {
                          const errorData = await response.json();
-                         errorMsg = errorData.error || errorMsg; // Use backend error if available
-                     } catch (e) { /* Ignore parsing error */ }
-                     throw new Error(errorMsg); // Throw after checking response
+                         errorMsg = errorData.error || errorMsg;
+                     } catch (e) { /* Ignore */ }
+                     throw new Error(errorMsg);
                  }
 
                 const setData = await response.json();
@@ -203,39 +225,38 @@
                     currentSetId = setData.setId;
                     currentQuestions = setData.questions;
 
-                    statusDiv.textContent = `獲取題組成功 (ID: ${currentSetId})！請在紙上作答後拍照上傳。`;
+                    statusDiv.textContent = `獲取題組成功 (ID: ${currentSetId.substring(0, 8)}...)！請作答後拍照上傳。`;
                     questionsDiv.style.display = 'block';
-                    uploadSection.style.display = 'block'; // Show upload section only after getting questions
+                    uploadSection.style.display = 'block';
 
-                    // Display questions
+                    // Display questions from moni.json structure
+                    questionListDiv.innerHTML = ''; // Clear previous list
                     currentQuestions.forEach((q, index) => {
                         const item = document.createElement('div');
                         item.classList.add('question-item');
-                        const questionString = q.question || "";
-                        const parts = questionString.split('\n'); // Split context and verse
-                        const context = parts[0] || "";
-                        const versePart = parts.length > 1 ? parts[1] : ""; // Verse is the second part
 
-                        // Format verse part with blank
-                        const formattedVerse = escapeHtml(versePart).replace(/_{2,}/g, '<span class="underline-blank"> </span>'); // Use   for empty blanks
+                        // Format the question text, replacing blanks if needed
+                        const formattedQuestion = escapeHtml(q.question || "").replace(/_{2,}/g, '<span class="underline-blank"> </span>');
 
-                        // Prepare source string beforehand (Robust fix from previous attempt)
-                        const topicText = escapeHtml(q.topic || "2分");
-                        const sourceText = escapeHtml(q.source || "未知");
-                        const sourceInfoString = `(${topicText} | 來源: ${sourceText})`;
+                        // Prepare details string (Topic & Source)
+                        const topicText = escapeHtml(q.topic || "未知主題");
+                        const sourceText = escapeHtml(q.source || "未知類型");
+                        const detailsString = `(${topicText} | 類型: ${sourceText})`;
 
                         item.innerHTML = `
                             <p>
                                 <strong>${index + 1}.</strong>
-                                <span class="question-context">${escapeHtml(context)}</span>
-                                <span class="question-verse">${formattedVerse}</span>
-                                <span class="question-source">${sourceInfoString}</span> 
+                                <span class="question-text">${formattedQuestion}</span>
+                                <span class="question-details">${detailsString}</span>
                              </p>`;
                         questionListDiv.appendChild(item);
                     });
 
+                    // Scroll to questions
+                    questionsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
                 } else {
-                    throw new Error('未能從後端獲取有效的題組數據。');
+                    throw new Error('未能從後端獲取有效的題組數據。返回數據結構可能不正確。');
                 }
             } catch (error) {
                 displayError(`獲取題目失敗: ${error.message}`);
@@ -245,23 +266,27 @@
             }
         });
 
-        // Image Selection and Compression
         imageUploadInput.addEventListener('change', async (event) => {
             const file = event.target.files[0];
-            compressedImageBlob = null; // Reset blob
-            submitBtn.disabled = true; // Disable submit until compression done
+            compressedImageBlob = null;
+            submitBtn.disabled = true;
             imagePreview.style.display = 'none';
             compressionInfo.textContent = '';
+            // Clear previous errors shown in compressionInfo
+            if (compressionInfo.querySelector('.error-message')) {
+                compressionInfo.innerHTML = '';
+            }
+
 
             if (!file) return;
 
             if (!file.type.startsWith('image/')) {
                 displayError('請選擇有效的圖片文件！', compressionInfo);
-                imageUploadInput.value = ''; // Clear invalid selection
+                imageUploadInput.value = '';
                 return;
             }
 
-            // Show Preview (before compression)
+            // Show Preview
             const reader = new FileReader();
             reader.onload = (e) => {
                 imagePreview.src = e.target.result;
@@ -274,35 +299,35 @@
             console.log(`原始圖片大小: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
 
             const options = {
-                maxSizeMB: 1,
+                maxSizeMB: 1.5, // Slightly increased max size if needed
                 maxWidthOrHeight: 1920,
                 useWebWorker: true,
-                 // signal: abortController.signal // Add abort signal if needed
+                // initialQuality: 0.7 // You can adjust initial quality
             };
 
             try {
-                // **Use browser-image-compression**
                 compressedImageBlob = await imageCompression(file, options);
                 console.log(`壓縮後圖片大小: ${(compressedImageBlob.size / 1024 / 1024).toFixed(2)} MB`);
                 compressionInfo.textContent = `圖片已準備就緒 (大小: ${(compressedImageBlob.size / 1024 / 1024).toFixed(2)} MB)`;
-                submitBtn.disabled = false; // Enable submit button
+                submitBtn.disabled = false; // Enable submit
             } catch (error) {
                 console.error('圖片壓縮失敗:', error);
-                displayError(`圖片壓縮失敗: ${error.message}`, compressionInfo);
+                displayError(`圖片壓縮失敗: ${error.message || '未知錯誤'}`, compressionInfo);
                 compressedImageBlob = null;
                 imagePreview.style.display = 'none';
-                 imageUploadInput.value = ''; // Clear selection on compression failure
+                imageUploadInput.value = '';
             }
         });
 
-        // Check Backend Status Button
         checkBackendBtn.addEventListener('click', async () => {
              setLoadingState(checkBackendBtn, true, '檢查後端狀態');
              statusDiv.textContent = '正在檢查後端狀態...';
+             statusDiv.style.display = 'block';
              try {
                  const response = await fetch('/api/hello');
-                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                 if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
                  const data = await response.json();
+                 // Use pre for better formatting, escape the JSON string
                  statusDiv.innerHTML = `後端狀態：<pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
              } catch (error) {
                  displayError(`無法連接後端或後端錯誤: ${error.message}`);
@@ -311,130 +336,160 @@
              }
         });
 
-        // Submit Answers Button
         submitBtn.addEventListener('click', async () => {
-            if (isSubmitting) return; // Prevent double clicks
+            if (isSubmitting) return;
             if (!compressedImageBlob) {
-                alert('請先選擇並等待圖片壓縮完成！');
+                alert('錯誤：沒有準備好的圖片數據。請先選擇並等待圖片壓縮完成！');
                 return;
             }
             if (!currentSetId) {
-                 alert('缺少題組信息 (Set ID)，請先點擊 "開始挑戰" 獲取題目。');
+                 alert('錯誤：缺少題組信息 (Set ID)。請先點擊 "開始挑戰" 獲取題目。');
                  return;
             }
 
             isSubmitting = true;
             setLoadingState(submitBtn, true, '提交答案照片');
-            resultDiv.innerHTML = '<div class="loading">正在上傳圖片並等待 AI 評分，請稍候...</div>';
-            resultDiv.style.display = 'block'; // Show loading message
-             // Scroll to results
-             resultDiv.scrollIntoView({ behavior: 'smooth' });
-
+            resultDiv.innerHTML = '<div class="loading">正在上傳圖片並等待 AI 評分，過程可能需要一些時間，請耐心等待...</div>';
+            resultDiv.style.display = 'block';
+            resultDiv.scrollIntoView({ behavior: 'smooth' });
 
             const formData = new FormData();
             formData.append('setId', currentSetId);
-            // Use a filename that might be useful for backend debugging
-            formData.append('handwritingImage', compressedImageBlob, `set_${currentSetId}_answer.png`);
+            // Generate a unique filename including timestamp
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const filename = `set_${currentSetId.substring(0, 8)}_${timestamp}.png`;
+            formData.append('handwritingImage', compressedImageBlob, filename);
+
 
             try {
                 const response = await fetch('/api/submit', {
                     method: 'POST',
                     body: formData,
-                     // Let browser set Content-Type for FormData
                 });
 
                  if (!response.ok) {
-                     let errorMsg = `提交失敗！狀態: ${response.status} ${response.statusText}`;
+                     let errorMsg = `提交失敗！狀態: ${response.status}`;
                      try {
                          const errorData = await response.json();
                          errorMsg = errorData.error || errorMsg;
-                     } catch (e) { /* Ignore parsing error */ }
+                     } catch (e) { /* Ignore */ }
                      throw new Error(errorMsg);
                  }
 
                 const resultData = await response.json();
+                console.log("Result Data Received:", resultData); // Log received data
 
                 // --- Render Results ---
                 let resultHTML = `<h2>評分結果 (總分: ${resultData.totalScore ?? 'N/A'} / 8)</h2>`;
 
-                 // Display Processing Hints (OCR/Feedback Issues)
+                 // Display General Processing Hints (OCR/Feedback API Issues)
                  let hintsHTML = '';
                  if (resultData.ocrIssue) {
-                     hintsHTML += `<p>OCR 提示：${escapeHtml(resultData.ocrIssue)}</p>`;
+                     hintsHTML += `<p>圖片識別提示：${escapeHtml(resultData.ocrIssue)}</p>`;
                  }
-                 // Only show the hints container if there are hints
+                 if (resultData.feedbackIssue) {
+                     hintsHTML += `<p>AI反饋提示：${escapeHtml(resultData.feedbackIssue)}</p>`;
+                 }
                  if (hintsHTML) {
                     resultHTML += `<div class="processing-hints">${hintsHTML}</div>`;
                  }
 
+                // Display Individual Question Results
                 if (resultData.results && Array.isArray(resultData.results)) {
                     resultData.results.forEach((res, index) => {
                         const isCorrect = res.isCorrect;
-                        const score = res.score !== undefined ? res.score : 'N/A';
+                        const score = res.score !== undefined ? res.score.toFixed(1) : 'N/A'; // Format score
                         const recognized = escapeHtml(res.recognizedText || '[未能識別]');
                         const correct = escapeHtml(res.correctAnswer || '[標準答案缺失]');
-                        // Determine border color based on success/correctness
-                        let borderColor = '#ccc'; // Default
-                         if (res.success === false || recognized.startsWith('[') ) { // Simplified check for error placeholders
-                             borderColor = '#aaa'; // Grey for processing errors/unrecognized
-                         } else if (isCorrect) {
-                             borderColor = '#5cb85c'; // Green for correct
-                         } else {
-                             borderColor = '#d9534f'; // Red for incorrect
-                         }
 
+                        let borderColor = '#ccc'; // Default border
+                        let recognizedClass = ''; // Class for recognized text span
+                        let tickOrCross = '';
 
-                        resultHTML += `<div class="result-item" style="border-left: 5px solid ${borderColor};">`;
-                        resultHTML += `<p><strong>第 ${index + 1} 題</strong> (得分: ${score}) ${isCorrect ? '<span class="correct-tick">✔</span>' : '<span class="incorrect-cross">✘</span>'}</p>`;
+                        if (res.success === false || recognized.startsWith('[')) {
+                            borderColor = '#aaa'; // Grey for processing errors/unrecognized
+                            recognizedClass = 'unrecognized-text';
+                            tickOrCross = `<span class="incorrect-cross">✘</span> <span style="color: #aaa;">(處理失敗)</span>`;
+                        } else if (isCorrect) {
+                            borderColor = '#5cb85c'; // Green for correct
+                            recognizedClass = ''; // Default styling
+                            tickOrCross = '<span class="correct-tick">✔</span>';
+                        } else {
+                            borderColor = '#d9534f'; // Red for incorrect
+                            recognizedClass = 'incorrect-answer-text'; // Add red background class
+                            tickOrCross = '<span class="incorrect-cross">✘</span>';
+                        }
 
-                         // Display recognized and correct answers clearly
-                         resultHTML += `<p><span class="label">識別結果:</span> <span class="recognized-text ${!isCorrect && res.success ? 'incorrect-answer-text' : ''}">${recognized}</span></p>`;
-                         // Only show correct answer if different or if there was an item-level error
-                         if (!isCorrect || !res.success || res.error) { // Show correct answer if wrong or specific item error
+                        resultHTML += `<div class="result-item" style="border-left-color: ${borderColor};">`;
+                        resultHTML += `<p><strong>第 ${index + 1} 題</strong> (得分: ${score}) ${tickOrCross}</p>`;
+
+                         // Display recognized and correct answers
+                         resultHTML += `<p><span class="label">識別結果:</span> <span class="recognized-text ${recognizedClass}">${recognized}</span></p>`;
+                         // Always show correct answer if not correct, or if there was an item-level error
+                         if (!isCorrect || !res.success || res.error) {
                             resultHTML += `<p><span class="label">正確答案:</span> <span class="correct-answer-text">${correct}</span></p>`;
                          }
 
-                         // Add specific item-level error if present (e.g., "[無法識別]")
+                         // Add specific item-level error hint (e.g., "AI 無法識別此答案")
                          if (res.error) {
-                             resultHTML += `<p style="color: magenta; font-size: 0.9em;">項目提示: ${escapeHtml(res.error)}</p>`;
+                             resultHTML += `<p class="item-hint">提示: ${escapeHtml(res.error)}</p>`;
                          }
                         resultHTML += `</div>`; // Close result-item
                     });
                 } else {
-                     resultHTML += `<p>無法解析詳細評分結果。</p>`;
-                     console.warn("Received result data missing 'results' array:", resultData);
+                     resultHTML += `<p class="error-message">無法解析詳細評分結果。收到的數據格式可能有誤。</p>`;
+                     console.warn("Received result data missing or invalid 'results' array:", resultData);
                 }
 
-                // Display Overall Feedback (Scolding/Praise)
-                if (resultData.feedback) {
-                     const feedbackClass = (resultData.totalScore === 8) ? 'feedback-success' : 'feedback-fail';
-                      // Use <pre> to respect newlines from AI feedback, apply escapeHtml for safety
-                     resultHTML += `<div class="feedback-box ${feedbackClass}"><pre>${escapeHtml(resultData.feedback)}</pre></div>`;
-                } else {
+                // Display Overall Feedback (Scolding/Praise) + Animation
+                 resultDiv.innerHTML = resultHTML; // Render results first
+
+                 // Add feedback box after results are rendered
+                 const feedbackContainer = document.createElement('div');
+                 if (resultData.feedback) {
+                     const isFullMarks = (resultData.totalScore === 8);
+                     const feedbackClass = isFullMarks ? 'feedback-success' : 'feedback-fail';
+                     // Use <pre> to respect newlines, escape content
+                     feedbackContainer.className = `feedback-box ${feedbackClass}`;
+                     const pre = document.createElement('pre');
+                     pre.textContent = resultData.feedback; // Use textContent for auto-escaping by browser
+                     feedbackContainer.appendChild(pre);
+
+                     // (Requirement 3) Trigger animation AFTER rendering results+feedback
+                     if (isFullMarks) {
+                         // Apply animation class to the main result div
+                         resultDiv.classList.add('full-marks-celebration');
+                         // Optional: Remove class after animation completes
+                         setTimeout(() => {
+                             resultDiv.classList.remove('full-marks-celebration');
+                         }, 1500); // Match animation duration
+                     }
+
+                 } else {
                      // Basic fallback feedback if backend didn't provide one
-                     const basicFeedback = (resultData.totalScore === 8)
+                     const isFullMarks = (resultData.totalScore === 8);
+                     const basicFeedback = isFullMarks
                          ? "滿分！表現不錯！"
-                         : `總分 ${resultData.totalScore}！未達滿分，需要加強！`;
-                    const fallbackClass = (resultData.totalScore === 8) ? 'feedback-success' : 'feedback-fail';
-                     resultHTML += `<div class="feedback-box ${fallbackClass}"><p>${escapeHtml(basicFeedback)}</p></div>`;
-                }
-
-                resultDiv.innerHTML = resultHTML;
+                         : `總分 ${resultData.totalScore ?? 'N/A'}！未達滿分，還需努力！這次饒了你，下次注意！`; // Slightly less harsh fallback
+                    const fallbackClass = isFullMarks ? 'feedback-success' : 'feedback-fail';
+                    feedbackContainer.className = `feedback-box ${fallbackClass}`;
+                    feedbackContainer.innerHTML = `<p>${escapeHtml(basicFeedback)}</p>`; // Escape basic feedback too
+                 }
+                 resultDiv.appendChild(feedbackContainer); // Add feedback box to the results div
 
             } catch (error) {
                  console.error('提交答案或處理結果時出錯:', error);
-                 // Display error within the result div
                  displayError(`提交或處理失敗: ${error.message}`, resultDiv);
             } finally {
                 isSubmitting = false;
                 setLoadingState(submitBtn, false, '提交答案照片');
-                 // Re-enable start button to allow another try
-                 setLoadingState(getQuestionBtn, false, '開始挑戰');
+                // Don't automatically re-enable start button, let user decide
+                // setLoadingState(getQuestionBtn, false, '開始挑戰');
             }
         });
 
         // --- Initial Setup ---
-        resetUI(); // Ensure clean state on load
+        resetUI();
 
     </script>
 </body>
