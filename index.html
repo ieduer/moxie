@@ -14,7 +14,6 @@
         .question-item:last-child { border-bottom: none; }
         /* Adjusted styling for moni.json format */
         .question-text { display: block; margin-bottom: 5px; font-weight: bold; } /* The main question text */
-        .question-details { font-size: 0.85em; color: #666; margin-left: 5px;} /* Topic and Source Type */
 
         pre { background-color: #f4f4f4; padding: 10px; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; font-size: 0.9em; color: #333; border: 1px solid #ddd;}
         button { padding: 12px 20px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 1em; transition: background-color 0.2s ease, transform 0.1s ease; margin: 5px; }
@@ -245,7 +244,6 @@
                         item.innerHTML = `
                             <p>
                                 <span class="question-text">${formattedQuestion}</span>
-                                <span class="question-details">${detailsString}</span>
                              </p>`;
                         questionListDiv.appendChild(item);
                     });
