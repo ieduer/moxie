@@ -171,20 +171,22 @@
                     questionsDiv.style.display = 'block';
                     uploadSection.style.display = 'block'; // Show upload section only after getting questions
 
-                    // Display questions
-                    questionsData.forEach((q, index) => {
-                        const item = document.createElement('div');
-                        item.classList.add('question-item');
-                        // Replace multiple underscores with a single span for styling
-                        const formattedQuestion = q.question.replace(/_{2,}/g, '<span class="underline-blank"> </span>'); // Use   for empty blanks
-                        item.innerHTML = `
-                            <p>
-                                <strong>${index + 1}.</strong>
-                                <span class="question-text">${formattedQuestion}</span>
-                                <span class="question-source">(${q.topic || '2分'} | 來源: ${q.source || '未知'})</span>
-                             </p>`;
-                        questionListDiv.appendChild(item);
-                    });
+                // Display questions
+                currentQuestions.forEach((q, index) => { // <--- CORRECTED: Use currentQuestions
+                    const item = document.createElement('div');
+                    item.classList.add('question-item');
+                    // Replace multiple underscores with a single span for styling
+                    // Make sure q.question exists and is a string
+                    const questionString = q.question || ""; // Default to empty string if undefined
+                    const formattedQuestion = questionString.replace(/_{2,}/g, '<span class="underline-blank"> </span>'); // Use   for empty blanks
+                    item.innerHTML = `
+                        <p>
+                            <strong>${index + 1}.</strong>
+                            <span class="question-text">${formattedQuestion}</span>
+                            <span class="question-source">(${q.topic || '2分'} | 來源: ${q.source || '未知'})</span>
+                         </p>`;
+                    questionListDiv.appendChild(item);
+                });
 
                 } else {
                     throw new Error('未能從後端獲取有效的題組數據。');
