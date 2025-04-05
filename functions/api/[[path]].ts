@@ -146,22 +146,26 @@ async function callGeminiAPI(apiKey: string, model: string, contents: GeminiCont
 // --- **TYPE GUARD for moni.json data** --- (Requirement 1 & 2)
 function isValidMoniData(data: any): data is MoniQuestion[] {
     if (!Array.isArray(data)) {
-        console.error("isValidMoniData: Input is not an array.");
+        console.error("isValidMoniData: Input is not an array.", data); // Log the actual data
         return false;
     }
     if (data.length === 0) {
         console.error("isValidMoniData: Array is empty.");
-        // Allow empty array? Decide based on requirements. For now, fail if empty.
         return false;
     }
-    // Check the first item structure as a sample
     const sample = data[0];
     const isValid = typeof sample?.type === 'string' &&
                     typeof sample?.topic === 'string' &&
                     typeof sample?.question === 'string' &&
                     typeof sample?.reference_answer === 'string';
     if (!isValid) {
-        console.error("isValidMoniData: First item structure is invalid.", sample);
+        console.error("isValidMoniData: First item structure is invalid.", sample); // Log the sample item
+        console.error("Types:", { // Log types of each property to help diagnose
+            type: typeof sample?.type,
+            topic: typeof sample?.topic,
+            question: typeof sample?.question,
+            reference_answer: typeof sample?.reference_answer
+        });
     }
     return isValid;
 }
