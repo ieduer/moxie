@@ -1,390 +1,457 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>墨力全開 - AI 默寫教練</title>
-  <style>
-    /* Basic Styles */
-    body { font-family: sans-serif; line-height: 1.6; padding: 20px; max-width: 800px; margin: 0 auto; background-color: #f9f9f9; }
-    h1 { text-align: center; color: #333; }
-    strong { color: #d9534f; }
-    #status, #questions, #result { margin-top: 20px; padding: 15px; border: 1px solid #ccc; border-radius: 8px; background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .question-item { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px dashed #eee; }
-    .question-item:last-child { border-bottom: none; }
-    pre { background-color: #f4f4f4; padding: 10px; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; font-size: 0.9em; }
-    button { padding: 12px 20px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 1em; transition: background-color 0.2s ease; margin-left: 5px; }
-    button:hover:not(:disabled) { background-color: #0056b3; }
-    button:disabled { background-color: #ccc; cursor: not-allowed; }
-    .button-group { display: flex; gap: 10px; margin-bottom: 20px; justify-content: center; }
-    h2 { margin-top: 0; color: #0056b3; }
-    .underline-blank { text-decoration: underline; color: #aaa; display: inline-block; min-width: 10em; text-align: center; }
-    .answer-wrapper { margin-top: 10px; border: 1px solid #ddd; border-radius: 4px; background-color: #fff; }
-    .canvas-container { position: relative; width: 100%; height: 180px; border-bottom: 1px solid #eee; }
-    /* Two-layer canvas: both placed in the container; overlay is absolute */
-    .canvas-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; touch-action: none; }
-    .base-canvas { z-index: 1; }
-    .overlay-canvas { z-index: 2; pointer-events: none; }
-    .controls { padding: 5px; text-align: right; }
-    .clear-btn { background-color: #f0ad4e; font-size: 0.9em; padding: 5px 10px; }
-    .clear-btn:hover { background-color: #ec971f; }
-    .loading { font-style: italic; color: #555; }
-    .result-item { margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
-    .result-item p { margin: 5px 0; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"> <!-- 禁用縮放 -->
+    <title>墨力全開 - AI 默寫教練</title>
+    <style>
+        /* 基本樣式保持不變 */
+        body { font-family: sans-serif; line-height: 1.6; padding: 20px; max-width: 800px; margin: 0 auto; background-color: #f9f9f9; }
+        h1 { text-align: center; color: #333; }
+        strong { color: #d9534f; }
+        #status, #questions, #result { margin-top: 20px; padding: 15px; border: 1px solid #ccc; border-radius: 8px; background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .question-item { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px dashed #eee; }
+        .question-item:last-child { border-bottom: none; }
+        pre { background-color: #f4f4f4; padding: 10px; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; font-size: 0.9em; }
+        button { padding: 12px 20px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 1em; transition: background-color 0.2s ease; margin-left: 5px; }
+        button:hover:not(:disabled) { background-color: #0056b3; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        .button-group { display: flex; gap: 10px; margin-bottom: 20px; justify-content: center;}
+        h2 { margin-top: 0; color: #0056b3; }
+        .underline-blank { text-decoration: underline; color: #aaa; display: inline-block; min-width: 10em; text-align: center;}
+        .answer-wrapper { margin-top: 10px; border: 1px solid #ddd; border-radius: 4px; background-color: #fff; }
+        .canvas-container { position: relative; width: 100%; height: 180px; border-bottom: 1px solid #eee;}
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border-radius: 4px 4px 0 0;
+            touch-action: none; /* 必須保留 */
+            cursor: crosshair;
+        }
+        .controls { padding: 5px; text-align: right; }
+        .clear-btn { background-color: #f0ad4e; font-size: 0.9em; padding: 5px 10px;}
+        .clear-btn:hover { background-color: #ec971f; }
+        .loading { font-style: italic; color: #555; }
+        .result-item { margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        .result-item p { margin: 5px 0; }
+    </style>
+    <!-- 引入 perfect-freehand 庫 -->
+    <script src="https://cdn.jsdelivr.net/npm/perfect-freehand@1.2.0/dist/perfect-freehand.min.js"></script>
 </head>
 <body>
-  <h1>墨力全開 - AI 默寫教練</h1>
-  <p style="text-align: center;"><strong>目標：高考默寫 8 分，必須拿滿！一分都不能少！</strong></p>
-  <p style="text-align: center; color: orange; font-weight: bold;">
-    請務必使用工整、清晰的標準簡體字書寫，筆畫分明，避免潦草、連筆或過於藝術化的字體，否則 AI 可能無法正確識別！
-  </p>
+    <h1>墨力全開 - AI 默寫教練</h1>
+    <p style="text-align: center;"><strong>目標：高考默寫 8 分，必須拿滿！一分都不能少！</strong></p>
+    <p style="text-align: center; color: orange; font-weight: bold;">
+        請務必使用工整、清晰的標準簡體字書寫，筆畫分明，避免潦草、連筆或過於藝術化的字體，否則 AI 可能無法正確識別！
+    </p>
 
-  <div class="button-group">
-    <button id="get-question-btn">開始挑戰</button>
-    <button id="check-backend-btn">檢查後端狀態</button>
-  </div>
+    <div class="button-group">
+        <button id="get-question-btn">開始挑戰</button>
+        <button id="check-backend-btn">檢查後端狀態</button>
+    </div>
 
-  <div id="status">狀態：等待操作...</div>
-  <div id="questions" style="display: none;">
-    <h2>請默寫以下內容 (共 8 分):</h2>
-    <div id="question-list"></div>
-    <button id="submit-btn" style="margin-top: 20px; width: 100%;" disabled>提交答案</button>
-  </div>
-  <div id="result" style="display: none;"></div>
+    <div id="status">狀態：等待操作...</div>
+    <div id="questions" style="display: none;">
+        <h2>請默寫以下內容 (共 8 分):</h2>
+        <div id="question-list"></div>
+        <button id="submit-btn" style="margin-top: 20px; width: 100%;" disabled>提交答案</button>
+    </div>
+    <div id="result" style="display: none;"></div>
 
-  <!-- Using ES module to load perfect-freehand from esm.sh -->
-  <script type="module">
-    import { getStroke } from 'https://esm.sh/perfect-freehand@1.2.0';
+    <script>
+        // --- 全局變量和常量 ---
+        const statusDiv = document.getElementById('status');
+        const questionsDiv = document.getElementById('questions');
+        const questionListDiv = document.getElementById('question-list');
+        const resultDiv = document.getElementById('result');
+        const getQuestionBtn = document.getElementById('get-question-btn');
+        const checkBackendBtn = document.getElementById('check-backend-btn');
+        const submitBtn = document.getElementById('submit-btn');
 
-    // Utility: Convert stroke data to an SVG path string
-    function getSvgPathFromStroke(stroke) {
-      if (!stroke || stroke.length < 1) return '';
-      const d = stroke.reduce(
-        (acc, [x0, y0], i, arr) => {
-          const [x1, y1] = arr[(i + 1) % arr.length];
-          acc.push(`Q ${x0},${y0} ${(x0 + x1) / 2},${(y0 + y1) / 2}`);
-          return acc;
-        },
-        ['M', ...stroke[0], 'Q', ...stroke[0]]
-      );
-      return `${d.join(' ')} Z`;
-    }
+        let currentQuestions = [];
+        let canvasInstances = []; // 存儲每個 canvas 的狀態和數據
 
-    // HandwritingCanvas class with dual-layer canvas and improved event binding
-    class HandwritingCanvas {
-      constructor(container, options = {}) {
-        this.options = { ...{
-          size: 3,
-          thinning: 0.6,
-          smoothing: 0.5,
-          streamline: 0.5,
-          color: 'black',
-          last: false,
-        }, ...options };
-
-        this.container = container;
-        this.strokes = [];
-        this.currentStroke = [];
-
-        this.initCanvases();
-        this.bindEvents();
-        this.resize();
-      }
-
-      initCanvases() {
-        this.baseCanvas = document.createElement('canvas');
-        this.baseCanvas.classList.add('canvas-layer', 'base-canvas');
-        this.overlayCanvas = document.createElement('canvas');
-        this.overlayCanvas.classList.add('canvas-layer', 'overlay-canvas');
-
-        this.container.style.position = 'relative';
-        this.container.appendChild(this.baseCanvas);
-        this.container.appendChild(this.overlayCanvas);
-
-        this.baseCtx = this.baseCanvas.getContext('2d');
-        this.overlayCtx = this.overlayCanvas.getContext('2d');
-      }
-
-      resize() {
-        const dpr = window.devicePixelRatio || 1;
-        const rect = this.container.getBoundingClientRect();
-        [this.baseCanvas.width, this.baseCanvas.height] = [rect.width * dpr, rect.height * dpr];
-        [this.overlayCanvas.width, this.overlayCanvas.height] = [rect.width * dpr, rect.height * dpr];
-
-        [this.baseCtx, this.overlayCtx].forEach(ctx => {
-          ctx.setTransform(1, 0, 0, 1, 0, 0);
-          ctx.scale(dpr, dpr);
-        });
-        this.redrawBase();
-      }
-
-      redrawBase() {
-        const rect = this.container.getBoundingClientRect();
-        this.baseCtx.clearRect(0, 0, rect.width, rect.height);
-        this.strokes.forEach(points => {
-          const stroke = getStroke(points, { ...this.options, last: true });
-          const pathData = getSvgPathFromStroke(stroke);
-          const path = new Path2D(pathData);
-          this.baseCtx.fillStyle = this.options.color;
-          this.baseCtx.fill(path);
-        });
-      }
-
-      redrawOverlay() {
-        const rect = this.container.getBoundingClientRect();
-        this.overlayCtx.clearRect(0, 0, rect.width, rect.height);
-        if (this.currentStroke.length > 0) {
-          const stroke = getStroke(this.currentStroke, this.options);
-          const pathData = getSvgPathFromStroke(stroke);
-          const path = new Path2D(pathData);
-          this.overlayCtx.fillStyle = this.options.color;
-          this.overlayCtx.fill(path);
-        }
-      }
-
-      getPoint(e) {
-        const rect = this.container.getBoundingClientRect();
-        let x, y, pressure;
-        if (e.clientX !== undefined && e.clientY !== undefined) {
-          x = (e.clientX - rect.left) * (this.overlayCanvas.width / rect.width);
-          y = (e.clientY - rect.top) * (this.overlayCanvas.height / rect.height);
-          pressure = e.pressure !== undefined && e.pressure > 0 ? e.pressure : 0.5;
-        } else if (e.touches && e.touches.length > 0) {
-          const touch = e.touches[0];
-          x = (touch.clientX - rect.left) * (this.overlayCanvas.width / rect.width);
-          y = (touch.clientY - rect.top) * (this.overlayCanvas.height / rect.height);
-          pressure = 0.5;
-        } else {
-          return null;
-        }
-        return [x, y, pressure];
-      }
-
-      // Updated bindEvents with touch fallback for iPad
-      bindEvents() {
-        this.pointerDownHandler = (e) => {
-          e.preventDefault();
-          this.currentStroke = [];
-          const pt = this.getPoint(e);
-          if (pt) this.currentStroke.push(pt);
-          this.isDrawing = true;
-          this.redrawOverlay();
+        // perfect-freehand 繪圖選項
+        const drawOptions = {
+            size: 3,        // 筆觸基礎大小
+            thinning: 0.6,
+            smoothing: 0.5,
+            streamline: 0.5,
+            color: 'black',
+            last: false, // 默認不是最後一點
         };
+        const drawOptionsLast = {...drawOptions, last: true }; // 抬筆時用
 
-        this.pointerMoveHandler = (e) => {
-          if (!this.isDrawing) return;
-          const pt = this.getPoint(e);
-          if (pt) {
-            this.currentStroke.push(pt);
-            window.requestAnimationFrame(() => this.redrawOverlay());
-          }
-        };
-
-        this.pointerUpHandler = (e) => {
-          if (!this.isDrawing) return;
-          this.isDrawing = false;
-          if (this.currentStroke.length > 0) {
-            this.strokes.push([...this.currentStroke]);
-            this.redrawBase();
-          }
-          const rect = this.container.getBoundingClientRect();
-          this.overlayCtx.clearRect(0, 0, rect.width, rect.height);
-        };
-
-        if (window.PointerEvent) {
-          this.container.addEventListener('pointerdown', this.pointerDownHandler, { passive: false });
-          this.container.addEventListener('pointermove', this.pointerMoveHandler, { passive: false });
-          window.addEventListener('pointerup', this.pointerUpHandler);
-          this.container.addEventListener('pointercancel', this.pointerUpHandler);
-        } else {
-          // Fallback for touch events on iPad or older devices
-          this.container.addEventListener('touchstart', this.pointerDownHandler, { passive: false });
-          this.container.addEventListener('touchmove', this.pointerMoveHandler, { passive: false });
-          window.addEventListener('touchend', this.pointerUpHandler);
-          this.container.addEventListener('touchcancel', this.pointerUpHandler);
+        // --- 工具函數 ---
+        function setLoadingState(button, isLoading, defaultText) {
+             if (isLoading) {
+                 button.disabled = true;
+                 button.textContent = '處理中...';
+             } else {
+                 button.disabled = false;
+                 button.textContent = defaultText;
+             }
         }
-      }
 
-      clear() {
-        this.strokes = [];
-        this.currentStroke = [];
-        const rect = this.container.getBoundingClientRect();
-        this.baseCtx.clearRect(0, 0, rect.width, rect.height);
-        this.overlayCtx.clearRect(0, 0, rect.width, rect.height);
-      }
-
-      toDataURL(type = 'image/png') {
-        return this.baseCanvas.toDataURL(type);
-      }
-    }
-
-    // The rest of your code: fetching questions, initializing handwriting areas,
-    // handling submit button, etc. (same as before)
-    const statusDiv = document.getElementById('status');
-    const questionsDiv = document.getElementById('questions');
-    const questionListDiv = document.getElementById('question-list');
-    const resultDiv = document.getElementById('result');
-    const getQuestionBtn = document.getElementById('get-question-btn');
-    const checkBackendBtn = document.getElementById('check-backend-btn');
-    const submitBtn = document.getElementById('submit-btn');
-
-    let currentQuestions = [];
-    let handwritingInstances = [];
-
-    function setLoadingState(button, isLoading, defaultText) {
-      if (isLoading) {
-        button.disabled = true;
-        button.textContent = '處理中...';
-      } else {
-        button.disabled = false;
-        button.textContent = defaultText;
-      }
-    }
-
-    getQuestionBtn.addEventListener('click', async () => {
-      setLoadingState(getQuestionBtn, true, '開始挑戰');
-      statusDiv.textContent = '正在從後端獲取題目...';
-      resultDiv.style.display = 'none';
-      questionsDiv.style.display = 'none';
-      questionListDiv.innerHTML = '';
-      currentQuestions = [];
-      handwritingInstances = [];
-
-      try {
-        const response = await fetch('/api/question');
-        if (!response.ok) throw new Error(`HTTP 錯誤！狀態: ${response.status} ${response.statusText}`);
-        const questions = await response.json();
-        if (questions && questions.length > 0) {
-          currentQuestions = questions;
-          statusDiv.textContent = '題目獲取成功！請作答。';
-          questions.forEach((q, index) => {
-            const item = document.createElement('div');
-            item.classList.add('question-item');
-            const formattedQuestion = q.question.replace(/_+/g, '<span class="underline-blank"> </span>');
-            item.innerHTML = `
-              <p><strong>${index + 1}. (${q.topic || '2分'})</strong></p>
-              <p>${formattedQuestion}</p>
-              <div class="answer-wrapper">
-                <div class="canvas-container" id="container-${q.id}"></div>
-                <div class="controls">
-                  <button class="clear-btn" type="button">清除</button>
-                </div>
-              </div>
-            `;
-            questionListDiv.appendChild(item);
-          });
-
-          setTimeout(() => {
-            currentQuestions.forEach((q, index) => {
-              const container = document.getElementById(`container-${q.id}`);
-              if (container) {
-                const hwCanvas = new HandwritingCanvas(container);
-                handwritingInstances.push(hwCanvas);
-                const clearBtn = container.parentElement.querySelector('.clear-btn');
-                if (clearBtn) {
-                  clearBtn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    hwCanvas.clear();
-                  });
-                }
-              }
-            });
-            questionsDiv.style.display = 'block';
-            submitBtn.disabled = false;
-          }, 50);
-        } else {
-          statusDiv.textContent = '未能獲取有效題目。後端返回空數據。';
+        // 將 SVG 路徑數據轉換為字串，供 Path2D 使用
+        function getSvgPathFromStroke(stroke) {
+            if (!stroke || stroke.length < 1) return '';
+            const d = stroke.reduce(
+                (acc, [x0, y0], i, arr) => {
+                    const [x1, y1] = arr[(i + 1) % arr.length];
+                    acc.push(`Q ${x0},${y0} ${(x0 + x1) / 2},${(y0 + y1) / 2}`);
+                    return acc;
+                },
+                ['M', ...stroke[0], 'Q', ...stroke[0]]
+            );
+            return `${d.join(' ')} Z`;
         }
-      } catch (error) {
-        console.error('獲取題目失敗:', error);
-        statusDiv.textContent = `獲取題目失敗: ${error.message}`;
-      } finally {
-        setLoadingState(getQuestionBtn, false, '開始挑戰');
-      }
-    });
 
-    checkBackendBtn.addEventListener('click', async () => {
-      alert('檢查後端狀態功能尚未實現。');
-    });
+        // --- 核心修改：Canvas 交互邏輯 ---
+        function initializeCanvas(canvasElement, index) {
+            const ctx = canvasElement.getContext('2d');
+            let currentPoints = []; // 當前正在繪製的筆畫原始點 [x, y, pressure]
+            let savedStrokesPoints = []; // 保存所有完成筆畫的點序列
+            let isPointerDown = false;
 
-    submitBtn.addEventListener('click', async () => {
-      setLoadingState(submitBtn, true, '提交答案');
-      resultDiv.innerHTML = '<div class="loading">正在提交答案並等待 AI 評分...</div>';
-      resultDiv.style.display = 'block';
+            // 設置 Canvas 繪圖屬性
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.fillStyle = drawOptions.color;
 
-      const answersData = [];
-      handwritingInstances.forEach((instance, index) => {
-        if (!currentQuestions || !currentQuestions[index] || !instance) {
-          console.error(`數據不一致或實例未找到 for index ${index}`);
-          return;
-        }
-        const questionId = currentQuestions[index].id;
-        if (instance.strokes.length === 0) {
-          answersData.push({ questionId: questionId, imageDataUrl: null });
-        } else {
-          const dataUrl = instance.toDataURL('image/png');
-          answersData.push({ questionId: questionId, imageDataUrl: dataUrl });
-        }
-      });
-
-      if (answersData.length !== currentQuestions.length) {
-        console.error("收集到的答案數量與題目數量不匹配！");
-        resultDiv.textContent = '提交失敗：內部錯誤，請重試。';
-        setLoadingState(submitBtn, false, '提交答案');
-        return;
-      }
-
-      try {
-        const response = await fetch('/api/submit', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ answers: answersData }),
-        });
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ error: `HTTP 錯誤！狀態: ${response.status} ${response.statusText}` }));
-          throw new Error(errorData.error || `HTTP 錯誤！狀態: ${response.status}`);
-        }
-        const resultData = await response.json();
-        let resultHTML = `<h2>評分結果 (總分: ${resultData.totalScore} / 8)</h2>`;
-        resultData.results.forEach((res, index) => {
-          const boxColor = res.success ? (res.isCorrect ? '#5cb85c' : '#d9534f') : '#777';
-          resultHTML += `<div class="result-item" style="border-color: ${boxColor};">`;
-          resultHTML += `<p><strong>第 ${index + 1} 題 (得分: ${res.score !== undefined ? res.score : 'N/A'})</strong></p>`;
-          if (res.success) {
-            resultHTML += `<p>你的答案 (識別結果): <span style="font-weight: bold; color: ${res.isCorrect ? 'green' : 'red'};">${res.recognizedText || '[識別失敗]'}</span></p>`;
-            if (!res.isCorrect && res.correctAnswer && res.correctAnswer !== "[未找到標準答案]") {
-              resultHTML += `<p>正確答案: <span style="font-weight: bold;">${res.correctAnswer}</span></p>`;
+            // 清除 Canvas
+            function clearCanvas() {
+                const dpr = window.devicePixelRatio || 1;
+                ctx.clearRect(0, 0, canvasElement.width / dpr, canvasElement.height / dpr);
+                savedStrokesPoints = [];
+                currentPoints = [];
+                canvasInstances[index].strokesPoints = savedStrokesPoints;
+                console.log(`Canvas ${canvasElement.id} cleared`);
             }
-            if (res.isCorrect) { resultHTML += `<p style="color: green;">回答正確！</p>`; }
-            if (res.r2Key === null && res.message === "Blank answer") { resultHTML += `<p style="color: orange;">你提交了空白答案。</p>`; }
-            if (res.error && (res.error.includes("OCR") || res.error.includes("解析"))) { resultHTML += `<p style="color: magenta;">AI識別提示: ${res.error}</p>`; }
-          } else {
-            resultHTML += `<p style="color: red;">處理失敗: ${res.error || '未知錯誤'}</p>`;
-          }
-          resultHTML += `</div>`;
-        });
-        if (resultData.totalScore < 8) {
-          resultHTML += `<p style="color: red; font-weight: bold; margin-top: 20px; text-align:center; font-size: 1.1em;">總分 ${resultData.totalScore}！離滿分差 ${8 - resultData.totalScore} 分！高考默寫一分都不能丟！回去好好練！</p>`;
-        } else {
-          resultHTML += `<p style="color: green; font-weight: bold; margin-top: 20px; text-align:center; font-size: 1.1em;">不錯，拿到滿分了！繼續保持！</p>`;
-        }
-        resultDiv.innerHTML = resultHTML;
-      } catch (error) {
-        console.error('提交答案失敗:', error);
-        resultDiv.textContent = `提交答案失敗: ${error.message}`;
-      } finally {
-        setLoadingState(submitBtn, false, '提交答案');
-      }
-    });
 
-    let resizeTimeout;
-    window.addEventListener("resize", () => {
-      clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(() => {
-        handwritingInstances.forEach(instance => instance.resize());
-      }, 250);
-    });
-  </script>
+            // 繪製單個筆畫（填充方式）
+            function drawStrokeOutline(points, options) {
+                 if (!points || points.length === 0) return;
+                 const strokeOutline = perfectFreehand.getStroke(points, options);
+                 const pathData = getSvgPathFromStroke(strokeOutline);
+                 const path = new Path2D(pathData);
+                 ctx.fill(path);
+            }
+
+            // 重新繪製所有筆畫
+            function redrawCanvas() {
+                const dpr = window.devicePixelRatio || 1;
+                ctx.clearRect(0, 0, canvasElement.width / dpr, canvasElement.height / dpr);
+                savedStrokesPoints.forEach(points => {
+                    drawStrokeOutline(points, drawOptions);
+                });
+                drawStrokeOutline(currentPoints, drawOptions);
+            }
+
+            // 獲取事件相對於 canvas 的正確坐標，並考慮 DPI 缩放
+            function getPointRelativeToCanvas(event) {
+                const rect = canvasElement.getBoundingClientRect();
+                let x, y, pressure;
+                const scaleX = canvasElement.width / rect.width;
+                const scaleY = canvasElement.height / rect.height;
+                if (event.clientX !== undefined && event.clientY !== undefined) {
+                    x = (event.clientX - rect.left) * scaleX;
+                    y = (event.clientY - rect.top) * scaleY;
+                    pressure = event.pressure !== undefined && event.pressure > 0 ? event.pressure : 0.5;
+                }
+                else if (event.touches && event.touches.length > 0) {
+                    const touch = event.touches[0];
+                    x = (touch.clientX - rect.left) * scaleX;
+                    y = (touch.clientY - rect.top) * scaleY;
+                    pressure = 0.5;
+                }
+                else if (event.offsetX !== undefined && event.offsetY !== undefined) {
+                    x = event.offsetX;
+                    y = event.offsetY;
+                    pressure = 0.5;
+                } else {
+                    console.error("無法獲取坐標 from event:", event);
+                    return null;
+                }
+                return [x, y, pressure];
+            }
+
+            function handlePointerDown(event) {
+                // 只接受鼠標左鍵或觸控
+                if (event.button !== 0 && event.pointerType === 'mouse') return;
+                event.preventDefault();
+                isPointerDown = true;
+                const point = getPointRelativeToCanvas(event);
+                if (point) {
+                    currentPoints = [point];
+                    redrawCanvas();
+                }
+            }
+
+            function handlePointerMove(event) {
+                if (!isPointerDown) return;
+                const point = getPointRelativeToCanvas(event);
+                if (point) {
+                    currentPoints.push(point);
+                    redrawCanvas();
+                }
+            }
+
+            function handlePointerUp(event) {
+                if (!isPointerDown) return;
+                isPointerDown = false;
+                if (currentPoints.length > 0) {
+                    savedStrokesPoints.push([...currentPoints]);
+                    // 使用 last: true 繪製最終筆畫輪廓
+                    const finalStrokeOutline = perfectFreehand.getStroke(currentPoints, drawOptionsLast);
+                    redrawCanvas();
+                    const pathData = getSvgPathFromStroke(finalStrokeOutline);
+                    const path = new Path2D(pathData);
+                    ctx.fill(path);
+                }
+                currentPoints = [];
+            }
+
+            // 綁定 pointer 事件
+            canvasElement.addEventListener('pointerdown', handlePointerDown, { passive: false });
+            canvasElement.addEventListener('pointermove', handlePointerMove, { passive: false });
+            window.addEventListener('pointerup', handlePointerUp);
+            canvasElement.addEventListener('pointerleave', (e) => { if(isPointerDown) handlePointerUp(e); });
+            // 增加 touch 事件的綁定以兼容 iPad 及其他觸控設備
+            canvasElement.addEventListener('touchstart', handlePointerDown, { passive: false });
+            canvasElement.addEventListener('touchmove', handlePointerMove, { passive: false });
+            window.addEventListener('touchend', handlePointerUp);
+            canvasElement.addEventListener('touchcancel', handlePointerUp);
+
+            // 綁定清除按鈕
+            const clearButton = canvasElement.closest('.answer-wrapper').querySelector('.clear-btn');
+            if (clearButton) {
+                clearButton.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    clearCanvas();
+                });
+            }
+
+            // 保存實例信息
+            canvasInstances[index] = {
+                canvas: canvasElement,
+                ctx: ctx,
+                strokesPoints: savedStrokesPoints,
+                clear: clearCanvas,
+                isEmpty: () => savedStrokesPoints.length === 0,
+                toDataURL: (type = 'image/png') => {
+                    const tempCanvas = document.createElement('canvas');
+                    const dpr = window.devicePixelRatio || 1;
+                    tempCanvas.width = canvasElement.width;
+                    tempCanvas.height = canvasElement.height;
+                    const tempCtx = tempCanvas.getContext('2d');
+                    tempCtx.fillStyle = 'white';
+                    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+                    tempCtx.scale(dpr, dpr);
+                    tempCtx.fillStyle = drawOptions.color;
+                    savedStrokesPoints.forEach(points => {
+                         if (points.length > 0) {
+                            const strokeOutline = perfectFreehand.getStroke(points, drawOptionsLast);
+                            const pathData = getSvgPathFromStroke(strokeOutline);
+                            const path = new Path2D(pathData);
+                            tempCtx.fill(path);
+                         }
+                    });
+                    return tempCanvas.toDataURL(type);
+                }
+            };
+
+            // 初始調整大小
+            resizeCanvas(canvasElement, index);
+        }
+
+        // --- 修改 resizeCanvas 函數 ---
+        function resizeCanvas(canvas, index) {
+             if (!canvas) return;
+            const ratio = Math.max(window.devicePixelRatio || 1, 1);
+            const width = canvas.offsetWidth;
+            const height = canvas.offsetHeight;
+
+            if (canvas.width !== width * ratio || canvas.height !== height * ratio) {
+                canvas.width = width * ratio;
+                canvas.height = height * ratio;
+                const ctx = canvas.getContext("2d");
+                ctx.scale(ratio, ratio);
+                console.log(`Canvas resized: ${canvas.id}, Ratio: ${ratio}, Width: ${canvas.width}, Height: ${canvas.height}`);
+
+                const instance = canvasInstances[index];
+                if (instance && instance.strokesPoints) {
+                     const redrawCtx = instance.ctx;
+                     redrawCtx.fillStyle = drawOptions.color;
+                     redrawCtx.lineCap = 'round';
+                     redrawCtx.lineJoin = 'round';
+                     redrawCtx.clearRect(0, 0, width, height);
+                     instance.strokesPoints.forEach(savedPoints => {
+                         if(savedPoints.length > 0){
+                            const strokeOutline = perfectFreehand.getStroke(savedPoints, drawOptionsLast);
+                            const pathData = getSvgPathFromStroke(strokeOutline);
+                            const path = new Path2D(pathData);
+                            redrawCtx.fill(path);
+                         }
+                     });
+                     console.log(`Redrawn canvas ${canvas.id} after resize.`);
+                }
+            }
+        }
+
+        // --- 獲取題目邏輯 (不變) ---
+        getQuestionBtn.addEventListener('click', async () => {
+            setLoadingState(getQuestionBtn, true, '開始挑戰');
+            statusDiv.textContent = '正在從後端獲取題目...';
+            resultDiv.style.display = 'none';
+            questionsDiv.style.display = 'none';
+            questionListDiv.innerHTML = '';
+            currentQuestions = [];
+            canvasInstances = [];
+
+            try {
+                const response = await fetch('/api/question');
+                if (!response.ok) throw new Error(`HTTP 錯誤！狀態: ${response.status} ${response.statusText}`);
+                const questions = await response.json();
+
+                if (questions && questions.length > 0) {
+                    currentQuestions = questions;
+                    statusDiv.textContent = '題目獲取成功！請作答。';
+                    canvasInstances = new Array(questions.length);
+
+                    questions.forEach((q, index) => {
+                        const item = document.createElement('div');
+                        item.classList.add('question-item');
+                        const formattedQuestion = q.question.replace(/_+/g, '<span class="underline-blank"> </span>');
+                        item.innerHTML = `
+                            <p><strong>${index + 1}. (${q.topic || '2分'})</strong></p>
+                            <p>${formattedQuestion}</p>
+                            <div class="answer-wrapper">
+                                <div class="canvas-container">
+                                    <canvas id="canvas-${q.id}"></canvas>
+                                </div>
+                                <div class="controls">
+                                    <button class="clear-btn" type="button">清除</button>
+                                </div>
+                            </div>
+                        `;
+                        questionListDiv.appendChild(item);
+                    });
+
+                    // 延時初始化以確保瀏覽器渲染完成
+                    setTimeout(() => {
+                          questions.forEach((q, index) => {
+                             const canvasElement = questionListDiv.querySelector(`#canvas-${q.id}`);
+                             if(canvasElement) {
+                                 initializeCanvas(canvasElement, index);
+                             }
+                          });
+                          questionsDiv.style.display = 'block';
+                          submitBtn.disabled = false;
+                     }, 50);
+
+                } else {
+                    statusDiv.textContent = '未能獲取有效題目。後端返回空數據。';
+                }
+            } catch (error) {
+                console.error('獲取題目失敗:', error);
+                statusDiv.textContent = `獲取題目失敗: ${error.message}`;
+            } finally {
+                setLoadingState(getQuestionBtn, false, '開始挑戰');
+            }
+        });
+
+        // --- 檢查後端狀態邏輯 (不變) ---
+        checkBackendBtn.addEventListener('click', async () => { /* ... 略 ... */ });
+
+        // --- 提交答案邏輯 ---
+        submitBtn.addEventListener('click', async () => {
+            setLoadingState(submitBtn, true, '提交答案');
+            resultDiv.innerHTML = '<div class="loading">正在提交答案並等待 AI 評分...</div>';
+            resultDiv.style.display = 'block';
+
+            const answersData = [];
+            canvasInstances.forEach((instance, index) => {
+                if (!currentQuestions || !currentQuestions[index] || !instance) {
+                    console.error(`數據不一致或實例未找到 for index ${index}`);
+                    return;
+                }
+                const questionId = currentQuestions[index].id;
+                if (instance.isEmpty()) {
+                    answersData.push({ questionId: questionId, imageDataUrl: null });
+                } else {
+                    const dataUrl = instance.toDataURL('image/png');
+                    answersData.push({ questionId: questionId, imageDataUrl: dataUrl });
+                }
+            });
+
+             if (answersData.length !== currentQuestions.length) {
+                 console.error("收集到的答案數量與題目數量不匹配！");
+                 resultDiv.textContent = '提交失敗：內部錯誤，請重試。';
+                 setLoadingState(submitBtn, false, '提交答案');
+                 return;
+             }
+
+            try {
+                const response = await fetch('/api/submit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ answers: answersData }),
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: `HTTP 錯誤！狀態: ${response.status} ${response.statusText}` }));
+                    throw new Error(errorData.error || `HTTP 錯誤！狀態: ${response.status}`);
+                }
+
+                const resultData = await response.json();
+
+                // --- 渲染評分結果 ---
+                let resultHTML = `<h2>評分結果 (總分: ${resultData.totalScore} / 8)</h2>`;
+                resultData.results.forEach((res, index) => {
+                    const boxColor = res.success ? (res.isCorrect ? '#5cb85c' : '#d9534f') : '#777';
+                    resultHTML += `<div class="result-item" style="border-color: ${boxColor};">`;
+                    resultHTML += `<p><strong>第 ${index + 1} 題 (得分: ${res.score !== undefined ? res.score : 'N/A'})</strong></p>`;
+                    if (res.success) {
+                        resultHTML += `<p>你的答案 (識別結果): <span style="font-weight: bold; color: ${res.isCorrect ? 'green' : 'red'};">${res.recognizedText || '[識別失敗]'}</span></p>`;
+                        if (!res.isCorrect && res.correctAnswer && res.correctAnswer !== "[未找到標準答案]") {
+                            resultHTML += `<p>正確答案: <span style="font-weight: bold;">${res.correctAnswer}</span></p>`;
+                        }
+                        if(res.isCorrect) { resultHTML += `<p style="color: green;">回答正確！</p>`; }
+                        if (res.r2Key === null && res.message === "Blank answer") { resultHTML += `<p style="color: orange;">你提交了空白答案。</p>`; }
+                        if (res.error && (res.error.includes("OCR") || res.error.includes("解析"))) { resultHTML += `<p style="color: magenta;">AI識別提示: ${res.error}</p>`; }
+                    } else { resultHTML += `<p style="color: red;">處理失敗: ${res.error || '未知錯誤'}</p>`; }
+                     resultHTML += `</div>`;
+                });
+                if (resultData.totalScore < 8) {
+                     resultHTML += `<p style="color: red; font-weight: bold; margin-top: 20px; text-align:center; font-size: 1.1em;">總分 ${resultData.totalScore}！離滿分差 ${8 - resultData.totalScore} 分！高考默寫一分都不能丟！回去好好練！</p>`;
+                } else {
+                    resultHTML += `<p style="color: green; font-weight: bold; margin-top: 20px; text-align:center; font-size: 1.1em;">不錯，拿到滿分了！繼續保持！</p>`;
+                }
+                resultDiv.innerHTML = resultHTML;
+
+            } catch (error) {
+                console.error('提交答案失敗:', error);
+                resultDiv.textContent = `提交答案失敗: ${error.message}`;
+            } finally {
+                setLoadingState(submitBtn, false, '提交答案');
+            }
+        });
+
+        // --- 窗口尺寸變化監聽器 ---
+        let resizeTimeout;
+        window.addEventListener("resize", () => {
+             clearTimeout(resizeTimeout);
+             resizeTimeout = setTimeout(() => {
+                 console.log("Window resized, adjusting canvases...");
+                 canvasInstances.forEach((instance, idx) => {
+                      if (instance && instance.canvas.offsetWidth > 0 && instance.canvas.offsetHeight > 0) {
+                         resizeCanvas(instance.canvas, idx);
+                      }
+                 });
+             }, 250);
+        });
+    </script>
 </body>
 </html>
