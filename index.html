@@ -64,18 +64,29 @@
             color: var(--ghibli-text);
             margin: 0; /* Reset default margin */
 
-            /* --- Background Image --- */
-            /* !! REPLACE 'path/to/your/ghibli-background.jpg' with your actual image path !! */
-            background-image: url('./data/img/5.jpeg'); /* Ensure path is correct */
-            background-size: cover; /* Cover the entire viewport */
-            background-position: center center; /* Center the image */
-            background-repeat: no-repeat; /* Do not tile the image */
-            background-attachment: fixed; /* Image stays fixed during scroll */
-            background-color: var(--ghibli-bg); /* Fallback color */
+            /* --- Faded Background Image --- */
+            /* Fallback color (solid) */
+            background-color: var(--ghibli-bg);
 
-             /* Ensure body takes at least viewport height, needed for container calc */
-             min-height: 100vh;
-             /* Do NOT set body overflow: hidden */
+            /* Layer 1: Semi-transparent overlay using the background color */
+            /* Adjust the alpha value (0.85) to control faintness. */
+            /* Higher value (e.g., 0.9) = fainter image. */
+            /* Lower value (e.g., 0.7) = clearer image. */
+            /* Using RGB of #fbfaf5 (your --ghibli-bg) */
+            background-image:
+                linear-gradient(rgba(251, 250, 245, 0.85), rgba(251, 250, 245, 0.9)),
+                /* Layer 2: Your actual image */
+                /* !! REPLACE './data/img/5.jpeg' with your actual image path !! */
+                url('./data/img/5.jpeg');
+
+            /* Properties applied to the background layers */
+            background-size: cover, cover; /* Apply cover to both layers */
+            background-position: center center, center center; /* Center both */
+            background-repeat: no-repeat, no-repeat; /* Don't repeat either */
+            background-attachment: fixed, fixed; /* Keep both fixed during scroll */
+
+            /* Ensure body takes at least viewport height */
+            min-height: 100vh;
         }
 
         /* --- Layout Container --- */
