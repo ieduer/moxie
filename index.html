@@ -85,7 +85,8 @@
 
     </style>
     <!-- **引入 browser-image-compression 庫** -->
-    <script src="https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/dist/browser-image-compression.js"></script>
+    <!-- 使用 BootCDN -->
+<script src="https://cdn.bootcdn.net/ajax/libs/browser-image-compression/2.0.2/browser-image-compression.js"></script>
 </head>
 <body>
     <h1>AI 默寫 <span style="font-size: 0.7em; color: #777;"></span></h1>
@@ -96,22 +97,20 @@
 
     <div class="button-group">
         <button id="get-question-btn">開始挑戰</button>
-        <button id="check-backend-btn">檢查後端</button>
     </div>
 
-    <div id="status">狀態：等待操作...</div>
+    <div id="status">狀態：🐶汪汪汪...</div>
 
     <div id="questions" style="display: none;">
-        <h2>紙上寫答案 (共 8 分):</h2>
+        <h2>筆墨伺候 (共 8 分)</h2>
         <p style="text-align: center; color: #777; font-style: italic;">
-            <strong style="color: red;">‼️：</strong>
-            請勿書寫題號，答案中**不要加標點符號**。
+            <strong style="color: red;">‼️：請勿書寫題號，答案中**不要加標點符號**。‼️ </strong>  
         </p>
         <div id="question-list"></div>
     </div>
 
     <div id="upload-section" style="display: none;">
-        <h2>拍照並上傳</h2>
+        <h2>拍照上傳</h2>
         <label for="image-upload" id="image-upload-label">選擇或拍攝照片:</label>
         <input type="file" id="image-upload" name="image-upload" accept="image/*">  <!-- Requirement 1: Removed capture="environment" -->
         <div id="compression-info"></div>
@@ -475,7 +474,7 @@
                      resultHTML += `<div style="text-align: center; margin-top: 20px; font-size: 1.2em; font-weight: bold; color: #007bff;">恭喜你獲得 <span style="font-size: 1.5em;">${resultData.badge}</span> 徽章！（心裡有就好）</div>`;
                  }
                  if (resultData.rank !== undefined) {
-                     resultHTML += `<div style="text-align: center; margin-bottom: 10px; font-size: 0.9em; color: #777;">當前階級：${convertToChineseRankFrontend(resultData.rank)}階</div>`;
+                     resultHTML += `<div style="text-align: center; margin-bottom: 10px; font-size: 0.9em; color: #777;">當前段位：${convertToChineseRankFrontend(resultData.rank)}階</div>`;
                  }
                  resultDiv.innerHTML = resultHTML; // Re-render with rank and badge
                  resultDiv.appendChild(feedbackContainer); // Ensure feedback is still there after re-render
@@ -508,8 +507,6 @@
                 return chineseNumbers[Math.floor(rank / 10)] + "十" + chineseNumbers[rank % 10];
             }
         }
-
-
     </script>
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
@@ -518,5 +515,8 @@
             y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
         })(window, document, "clarity", "script", "qz8lnht4jz");
     </script>
+  <footer>
+    <p>©Suen <a href="https://bdfz.net/posts/moxie" target="_blank" rel="noopener noreferrer">About</a></p>
+  </footer>
 </body>
 </html>
