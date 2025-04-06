@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>AI 默寫 - Ghibli 風</title>
     <style>
-        /* --- Requirement 1: Custom Font --- */
+        /* --- Font --- */
         @font-face {
             font-family: 'HuWenMingChao';
             src: url('./data/fonts/HuWenMingChaoTi.woff2') format('woff2'),
@@ -15,21 +15,18 @@
             font-display: swap;
         }
 
-        /* --- Requirement 3 & 5: Refined Ghibli Theme & Colors --- */
+        /* --- Ghibli Theme Variables --- */
         :root {
-            /* Core Palette - Softer, more natural tones */
-            --ghibli-bg: #fbfaf5;           /* Very light, warm off-white */
-            --ghibli-text: #5d5551;         /* Muted, warm brownish-grey */
-            --ghibli-text-light: #9a8f8a;   /* Lighter shade for secondary info */
-            --ghibli-primary: #8aa3a3;      /* Muted, dusty teal/blue */
-            --ghibli-primary-dark: #708a8a;  /* Darker shade for hover/headings */
-            --ghibli-accent1: #e0d8cc;      /* Warm, light stone beige */
-            --ghibli-accent2: #b8cca7;      /* Soft moss green (kept for submit) */
-            --ghibli-border-color: #d1c9bf; /* Softer border color */
-            --ghibli-shadow: 0 3px 6px rgba(93, 85, 81, 0.08); /* Softer shadow */
-            --ghibli-footer-bg: #f2efea;    /* Slightly darker cream for footer */
-
-            /* Status Colors - Integrated with palette */
+            --ghibli-bg: #fbfaf5;
+            --ghibli-text: #5d5551;
+            --ghibli-text-light: #9a8f8a;
+            --ghibli-primary: #8aa3a3;
+            --ghibli-primary-dark: #708a8a;
+            --ghibli-accent1: #e0d8cc;
+            --ghibli-accent2: #b8cca7;
+            --ghibli-border-color: #d1c9bf;
+            --ghibli-shadow: 0 3px 6px rgba(93, 85, 81, 0.08);
+            --ghibli-footer-bg: #f2efea;
             --ghibli-error-bg: #faeae7;
             --ghibli-error-border: #e8cac6;
             --ghibli-error-text: #b55b5b;
@@ -39,19 +36,16 @@
             --ghibli-warning-bg: #fef9e9;
             --ghibli-warning-border: #f9efd1;
             --ghibli-warning-text: #a88a57;
-
-            /* Question Item Colors - Lighter, harmonious variations */
             --ghibli-q-1: #ede9e1;
             --ghibli-q-2: #e8ede5;
             --ghibli-q-3: #ebe5e1;
             --ghibli-q-4: #e5eaed;
-
-            /* Font */
             --font-primary: 'HuWenMingChao', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
             --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            --footer-height: 60px; /* Define footer height as a variable */
         }
 
-        /* --- Base Styles & Font Application --- */
+        /* --- Base & Body Styles --- */
         * {
             box-sizing: border-box;
             margin: 0;
@@ -60,30 +54,47 @@
 
         html {
             scroll-behavior: smooth;
-            height: 100%;
+            /* Ensure html takes full height for body % height to work if needed */
+             /* height: 100%; */ /* Usually not needed with vh units */
         }
 
         body {
             font-family: var(--font-primary);
             line-height: 1.7;
-            background-color: var(--ghibli-bg);
             color: var(--ghibli-text);
-            height: 100%;
-            margin: 0;
-            /* Add padding-bottom to body equal to footer height */
-            padding-bottom: 60px; /* MUST MATCH footer height */
+            margin: 0; /* Reset default margin */
+
+            /* --- Background Image --- */
+            /* !! REPLACE 'path/to/your/ghibli-background.jpg' with your actual image path !! */
+            background-image: url('./data/img/5.jpeg'); /* Ensure path is correct */
+            background-size: cover; /* Cover the entire viewport */
+            background-position: center center; /* Center the image */
+            background-repeat: no-repeat; /* Do not tile the image */
+            background-attachment: fixed; /* Image stays fixed during scroll */
+            background-color: var(--ghibli-bg); /* Fallback color */
+
+             /* Ensure body takes at least viewport height, needed for container calc */
+             min-height: 100vh;
+             /* Do NOT set body overflow: hidden */
         }
 
-        /* --- Two-Column Layout --- */
+        /* --- Layout Container --- */
         .page-container {
             display: flex;
-            height: 100%; /* Fill available body height */
+             /* Calculate height: 100% viewport height MINUS footer height */
+             height: calc(100vh - var(--footer-height));
+             width: 100%; /* Ensure it takes full width */
+             position: absolute; /* Position relative to viewport for calc to work reliably */
+             top: 0;
+             left: 0;
         }
 
+        /* --- Columns (Scrollable) --- */
         .left-column, .right-column {
-            height: 100%;
-            overflow-y: auto;
-            padding: 30px;
+             /* Take full height of the calculated page-container height */
+             height: 100%;
+             overflow-y: auto; /* Enable vertical scroll *within* the column */
+             padding: 30px;
             -ms-overflow-style: none;
             scrollbar-width: none;
         }
@@ -96,30 +107,57 @@
             flex: 1;
             min-width: 300px;
             border-right: 1px solid var(--ghibli-border-color);
+             /* Optional: Add a subtle background if needed over the main bg image */
+             /* background-color: rgba(251, 250, 245, 0.8); */
         }
 
         .right-column {
             flex: 1.2;
             min-width: 320px;
-            background-color: rgba(255, 255, 255, 0.3); /* Slight visual separation */
             display: flex;
             flex-direction: column;
+             /* Optional: Add a subtle background */
+             background-color: rgba(255, 255, 255, 0.5);
         }
+
+        /* --- Footer (Fixed at Bottom) --- */
+        footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: var(--ghibli-footer-bg);
+            border-top: 1px solid var(--ghibli-border-color);
+            padding: 15px 0;
+            height: var(--footer-height); /* Use the variable */
+            text-align: center;
+            font-size: 0.9em;
+            color: var(--ghibli-text-light);
+            z-index: 10;
+            box-shadow: 0 -2px 5px rgba(93, 85, 81, 0.05);
+        }
+        footer a {
+             color: var(--ghibli-text-light); text-decoration: underline;
+         }
+         footer a:hover {
+              color: var(--ghibli-primary);
+          }
 
         /* --- Responsive Design --- */
         @media (max-width: 800px) {
-             html, body {
-                 height: auto;
-                 overflow: auto; /* Normal scroll on mobile */
-                 padding-bottom: 60px; /* Keep space for footer */
-             }
+            /* Allow normal page scroll on mobile */
+             body {
+                  min-height: 0; /* Reset min-height */
+                  padding-bottom: var(--footer-height); /* Still need space for fixed footer */
+              }
             .page-container {
                 flex-direction: column;
-                height: auto;
+                height: auto; /* Allow natural height */
+                position: static; /* Reset positioning */
             }
             .left-column, .right-column {
                 height: auto;
-                overflow-y: visible;
+                overflow-y: visible; /* Disable independent scroll */
                 width: 100%;
                 flex: none;
                 border-right: none;
@@ -127,326 +165,75 @@
                 padding: 20px;
             }
             .right-column { border-bottom: none; }
+             /* Footer remains fixed via its own style */
         }
 
-        /* --- General Element Styling (Refined Ghibli Theme) --- */
-        h1, h2 {
-            font-family: var(--font-primary);
-            color: var(--ghibli-primary-dark);
-            text-align: center;
-            margin-bottom: 20px;
-            font-weight: normal;
-        }
+        /* --- Other Styles (Unchanged from previous version) --- */
+        h1, h2 { font-family: var(--font-primary); color: var(--ghibli-primary-dark); text-align: center; margin-bottom: 20px; font-weight: normal; }
         h1 { font-size: 2.2em; margin-bottom: 10px; }
         h2 { font-size: 1.6em; border-bottom: 1px solid var(--ghibli-border-color); padding-bottom: 10px; margin-top: 30px; }
-
         p { margin-bottom: 15px; }
         strong { color: var(--ghibli-error-text); font-weight: normal; }
         a { color: var(--ghibli-primary); text-decoration: none; }
         a:hover { text-decoration: underline; color: var(--ghibli-primary-dark); }
-
-        /* --- Section Styling --- */
-        #status, #questions, #result, #upload-section, .feedback-box, .processing-hints, .error-message, .rank-badge-section {
-            margin-top: 25px;
-            padding: 20px;
-            border: 1px solid var(--ghibli-border-color); /* Subtle border */
-            border-radius: 12px; /* Softer corners */
-            background-color: rgba(255, 255, 255, 0.5);
-            box-shadow: var(--ghibli-shadow);
-        }
+        #status, #questions, #result, #upload-section, .feedback-box, .processing-hints, .error-message, .rank-badge-section { margin-top: 25px; padding: 20px; border: 1px solid var(--ghibli-border-color); border-radius: 12px; background-color: rgba(255, 255, 255, 0.7); /* Slightly increase opacity over image */ box-shadow: var(--ghibli-shadow); }
         #status { text-align: center; font-style: italic; color: var(--ghibli-text-light); background-color: transparent; border: none; box-shadow: none; padding: 10px 0;}
-        #questions { background-color: rgba(242, 239, 234, 0.4); } /* Use footer bg color slightly transparent */
+        #questions { background-color: rgba(242, 239, 234, 0.6); }
         #upload-section { border-top: 2px dashed var(--ghibli-primary); margin-top: 30px; }
-
-        /* Buttons */
         .button-group { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 25px; justify-content: center; }
-        button {
-            padding: 11px 24px; /* Slightly adjusted padding */
-            cursor: pointer;
-            background-color: var(--ghibli-primary);
-            color: var(--ghibli-bg);
-            border: none;
-            border-radius: 20px;
-            font-size: 1em;
-            font-family: var(--font-primary);
-            transition: background-color 0.25s ease, transform 0.15s ease, box-shadow 0.2s ease;
-            box-shadow: 0 2px 4px rgba(93, 85, 81, 0.15);
-        }
-        button:hover:not(:disabled) {
-            background-color: var(--ghibli-primary-dark);
-            box-shadow: 0 4px 8px rgba(93, 85, 81, 0.2);
-        }
-        button:active:not(:disabled) {
-            transform: scale(0.97);
-            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
-        }
-        button:disabled {
-            background-color: var(--ghibli-accent1);
-            color: var(--ghibli-text-light);
-            cursor: not-allowed;
-            opacity: 0.7;
-            box-shadow: none;
-        }
+        button { padding: 11px 24px; cursor: pointer; background-color: var(--ghibli-primary); color: var(--ghibli-bg); border: none; border-radius: 20px; font-size: 1em; font-family: var(--font-primary); transition: background-color 0.25s ease, transform 0.15s ease, box-shadow 0.2s ease; box-shadow: 0 2px 4px rgba(93, 85, 81, 0.15); }
+        button:hover:not(:disabled) { background-color: var(--ghibli-primary-dark); box-shadow: 0 4px 8px rgba(93, 85, 81, 0.2); }
+        button:active:not(:disabled) { transform: scale(0.97); box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1); }
+        button:disabled { background-color: var(--ghibli-accent1); color: var(--ghibli-text-light); cursor: not-allowed; opacity: 0.7; box-shadow: none; }
         button.loading-active { opacity: 0.8; }
-
-        #submit-btn {
-             background-color: var(--ghibli-accent2); /* Moss green */
-             color: var(--ghibli-text); /* Darker text for contrast */
-             width: calc(100% - 10px);
-             margin-top: 20px;
-         }
-         #submit-btn:hover:not(:disabled) {
-              background-color: #a6bb97; /* Darker green */
-         }
-
-        /* Question List & Items */
+        #submit-btn { background-color: var(--ghibli-accent2); color: var(--ghibli-text); width: calc(100% - 10px); margin-top: 20px; }
+        #submit-btn:hover:not(:disabled) { background-color: #a6bb97; }
         #question-list { margin-top: 15px; }
-        .question-item {
-            margin-bottom: 15px;
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid transparent; /* Base border for transition */
-            transition: background-color 0.3s ease, border-color 0.3s ease;
-            color: var(--ghibli-text);
-        }
+        .question-item { margin-bottom: 15px; padding: 15px; border-radius: 8px; border: 1px solid transparent; transition: background-color 0.3s ease, border-color 0.3s ease; color: var(--ghibli-text); }
         .question-item:nth-child(4n+1) { background-color: var(--ghibli-q-1); border-color: darken(var(--ghibli-q-1), 3%); }
         .question-item:nth-child(4n+2) { background-color: var(--ghibli-q-2); border-color: darken(var(--ghibli-q-2), 3%); }
         .question-item:nth-child(4n+3) { background-color: var(--ghibli-q-3); border-color: darken(var(--ghibli-q-3), 3%); }
         .question-item:nth-child(4n+4) { background-color: var(--ghibli-q-4); border-color: darken(var(--ghibli-q-4), 3%); }
-
         .question-item p { margin: 0; }
-        .question-text {
-             display: block;
-             margin-bottom: 5px;
-             font-weight: normal;
-             font-size: 1.1em;
-             color: var(--ghibli-text);
-         }
-         .question-details {
-             font-size: 0.85em;
-             color: var(--ghibli-text-light);
-             margin-top: 8px;
-         }
-        .underline-blank {
-            border-bottom: 1.5px dashed var(--ghibli-text-light);
-            padding: 0 0.5em;
-            color: var(--ghibli-text-light);
-            display: inline-block;
-            min-width: 5em;
-            text-align: center;
-         }
-
-        /* Upload Section */
+        .question-text { display: block; margin-bottom: 5px; font-weight: normal; font-size: 1.1em; color: var(--ghibli-text); }
+        .question-details { font-size: 0.85em; color: var(--ghibli-text-light); margin-top: 8px; }
+        .underline-blank { border-bottom: 1.5px dashed var(--ghibli-text-light); padding: 0 0.5em; color: var(--ghibli-text-light); display: inline-block; min-width: 5em; text-align: center; }
         #image-upload-label { display: block; margin-bottom: 10px; font-weight: bold; color: var(--ghibli-primary-dark); }
-        /* Basic file input styling */
-        input[type="file"] {
-            font-family: var(--font-primary);
-            color: var(--ghibli-text);
-            padding: 5px;
-            margin-bottom: 15px;
-        }
-        /* Style the button part of the file input */
-        input[type="file"]::file-selector-button {
-            font-family: var(--font-primary);
-            padding: 8px 15px;
-            margin-right: 15px;
-            cursor: pointer;
-            background-color: var(--ghibli-accent1);
-            color: var(--ghibli-text);
-            border: 1px solid var(--ghibli-border-color);
-            border-radius: 15px;
-            transition: background-color 0.2s ease;
-        }
-        input[type="file"]::file-selector-button:hover {
-            background-color: darken(var(--ghibli-accent1), 5%);
-        }
-
+        input[type="file"] { font-family: var(--font-primary); color: var(--ghibli-text); padding: 5px; margin-bottom: 15px; }
+        input[type="file"]::file-selector-button { font-family: var(--font-primary); padding: 8px 15px; margin-right: 15px; cursor: pointer; background-color: var(--ghibli-accent1); color: var(--ghibli-text); border: 1px solid var(--ghibli-border-color); border-radius: 15px; transition: background-color 0.2s ease; }
+        input[type="file"]::file-selector-button:hover { background-color: darken(var(--ghibli-accent1), 5%); }
         #image-preview-container { margin-top: 15px; text-align: center; }
         #image-preview { max-width: 90%; max-height: 350px; border: 1px solid var(--ghibli-border-color); border-radius: 8px; display: none; margin: 10px auto; box-shadow: var(--ghibli-shadow); }
         #compression-info { font-size: 0.9em; color: var(--ghibli-text-light); margin-top: 10px; text-align: center; min-height: 1.2em; }
-
-        /* Result Section */
-        #result { background-color: rgba(255, 255, 255, 0.6); }
-        .result-item {
-            margin-bottom: 15px;
-            padding: 15px;
-            border: 1px solid var(--ghibli-border-color);
-            border-radius: 8px;
-            border-left-width: 6px;
-            border-left-style: solid;
-            transition: border-color 0.3s ease;
-            background-color: var(--ghibli-bg); /* Use main bg for items */
-        }
+        #result { background-color: rgba(255, 255, 255, 0.75); } /* Slightly more opaque results box */
+        .result-item { margin-bottom: 15px; padding: 15px; border: 1px solid var(--ghibli-border-color); border-radius: 8px; border-left-width: 6px; border-left-style: solid; transition: border-color 0.3s ease; background-color: var(--ghibli-bg); }
         .result-item p { margin: 8px 0; }
         .result-item strong { color: var(--ghibli-primary-dark); font-weight: bold; }
         .result-item .label { font-weight: bold; color: var(--ghibli-text-light); min-width: 75px; display: inline-block;}
-        .recognized-text, .correct-answer-text, .incorrect-answer-text, .unrecognized-text {
-            font-weight: normal;
-            padding: 3px 6px;
-            border-radius: 4px;
-            display: inline-block;
-            word-break: break-word;
-            overflow-wrap: break-word;
-            line-height: 1.5;
-        }
-        .correct-answer-text {
-             color: var(--ghibli-success-text);
-             background-color: var(--ghibli-success-bg);
-             border: 1px solid var(--ghibli-success-border);
-        }
-        .incorrect-answer-text {
-            color: var(--ghibli-error-text);
-            background-color: var(--ghibli-error-bg);
-            border: 1px solid var(--ghibli-error-border);
-        }
-        .unrecognized-text {
-            color: var(--ghibli-text-light);
-            background-color: var(--ghibli-accent1);
-            font-style: italic;
-            border: 1px solid darken(var(--ghibli-accent1), 5%);
-        }
-
-        .correct-tick, .incorrect-cross {
-             font-weight: bold; margin-left: 8px; font-size: 1.1em;
-         }
+        .recognized-text, .correct-answer-text, .incorrect-answer-text, .unrecognized-text { font-weight: normal; padding: 3px 6px; border-radius: 4px; display: inline-block; word-break: break-word; overflow-wrap: break-word; line-height: 1.5; }
+        .correct-answer-text { color: var(--ghibli-success-text); background-color: var(--ghibli-success-bg); border: 1px solid var(--ghibli-success-border); }
+        .incorrect-answer-text { color: var(--ghibli-error-text); background-color: var(--ghibli-error-bg); border: 1px solid var(--ghibli-error-border); }
+        .unrecognized-text { color: var(--ghibli-text-light); background-color: var(--ghibli-accent1); font-style: italic; border: 1px solid darken(var(--ghibli-accent1), 5%); }
+        .correct-tick, .incorrect-cross { font-weight: bold; margin-left: 8px; font-size: 1.1em; }
         .correct-tick { color: var(--ghibli-success-text); }
         .incorrect-cross { color: var(--ghibli-error-text); }
         .processing-failed-text { color: var(--ghibli-warning-text); font-style: italic; }
-
-        /* Error, Warning, Feedback Messages */
-        .error-message, .processing-hints, .feedback-box {
-            border-radius: 8px;
-            padding: 15px;
-            margin-top: 20px;
-            font-size: 1em;
-            text-align: left;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            border: 1px solid;
-        }
-        .error-message {
-            background-color: var(--ghibli-error-bg);
-            border-color: var(--ghibli-error-border);
-            color: var(--ghibli-error-text);
-            font-weight: bold;
-        }
-        .processing-hints {
-            background-color: var(--ghibli-warning-bg);
-            border-color: var(--ghibli-warning-border);
-            color: var(--ghibli-warning-text);
-        }
+        .error-message, .processing-hints, .feedback-box { border-radius: 8px; padding: 15px; margin-top: 20px; font-size: 1em; text-align: left; white-space: pre-wrap; word-wrap: break-word; border: 1px solid; }
+        .error-message { background-color: var(--ghibli-error-bg); border-color: var(--ghibli-error-border); color: var(--ghibli-error-text); font-weight: bold; }
+        .processing-hints { background-color: var(--ghibli-warning-bg); border-color: var(--ghibli-warning-border); color: var(--ghibli-warning-text); }
         .processing-hints p { margin: 5px 0; font-weight: bold; }
         .item-hint { color: var(--ghibli-warning-text); font-size: 0.9em; margin-top: 5px; font-style: italic; }
-
-        .feedback-box {
-            text-align: center;
-            margin-top: 30px;
-            font-size: 1.1em;
-            line-height: 1.8;
-        }
-        .feedback-success {
-            background-color: var(--ghibli-success-bg);
-            border-color: var(--ghibli-success-border);
-            color: var(--ghibli-success-text);
-            font-weight: bold;
-        }
-        .feedback-fail {
-            background-color: var(--ghibli-error-bg);
-            border-color: var(--ghibli-error-border);
-            color: var(--ghibli-error-text);
-            font-weight: bold;
-            font-size: 1.15em;
-        }
-        .feedback-box pre {
-            background-color: transparent;
-            padding: 0; border-radius: 0;
-            white-space: pre-wrap; word-wrap: break-word;
-            font-size: inherit; color: inherit;
-            border: none;
-            font-family: var(--font-primary);
-            text-align: left;
-            max-height: none; overflow: visible;
-        }
-
-        /* Loading State */
-        .loading {
-            font-style: italic;
-            color: var(--ghibli-text-light);
-            text-align: center;
-            padding: 30px;
-            font-size: 1.1em;
-            border: 1px dashed var(--ghibli-border-color);
-            border-radius: 8px;
-            background-color: rgba(255, 255, 255, 0.3);
-        }
-
-        /* Praise Animation */
-        @keyframes celebrate-box {
-             0% { transform: scale(1); box-shadow: var(--ghibli-shadow); }
-             50% { transform: scale(1.01); box-shadow: 0 8px 16px rgba(90, 142, 100, 0.2); } /* Use success text color for shadow */
-             100% { transform: scale(1); box-shadow: var(--ghibli-shadow); }
-         }
-        #result.full-marks-celebration {
-             animation: celebrate-box 1.8s ease-in-out;
-             border: 1px solid var(--ghibli-success-border); /* Match success border */
-             box-shadow: 0 5px 10px rgba(90, 142, 100, 0.15); /* Persistent subtle green shadow */
-         }
-
-         /* Rank & Badge */
-         .rank-badge-section {
-            text-align: center;
-            margin-top: 25px;
-            padding: 15px;
-            background-color: rgba(224, 216, 204, 0.2); /* Use accent1 transparently */
-            border: 1px solid var(--ghibli-border-color);
-            border-radius: 8px;
-         }
-         .badge-display {
-            font-size: 1.3em;
-            font-weight: bold;
-            color: var(--ghibli-primary-dark);
-         }
-         .badge-display span {
-             font-size: 1.6em;
-             vertical-align: middle;
-             margin: 0 5px;
-             color: var(--ghibli-primary); /* Use primary color for badge text */
-         }
-         .rank-display {
-            margin-top: 5px;
-            font-size: 0.95em;
-            color: var(--ghibli-text-light);
-         }
-
-        /* --- Footer Styling (Fixed at bottom) --- */
-        footer {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            background-color: var(--ghibli-footer-bg); /* Distinct footer background */
-            border-top: 1px solid var(--ghibli-border-color); /* Subtle top border */
-            padding: 15px 0;
-            height: 60px; /* Fixed height */
-            text-align: center;
-            font-size: 0.9em;
-            color: var(--ghibli-text-light); /* Light text for footer */
-            z-index: 10;
-            box-shadow: 0 -2px 5px rgba(93, 85, 81, 0.05);
-        }
-        footer a {
-             color: var(--ghibli-text-light); /* Match footer text */
-             text-decoration: underline;
-         }
-         footer a:hover {
-              color: var(--ghibli-primary); /* Use primary color on hover */
-          }
-         /* Ensure footer is not covered on mobile */
-         @media (max-width: 800px) {
-              footer {
-                  position: fixed; /* Keep fixed on mobile too */
-              }
-          }
+        .feedback-box { text-align: center; margin-top: 30px; font-size: 1.1em; line-height: 1.8; }
+        .feedback-success { background-color: var(--ghibli-success-bg); border-color: var(--ghibli-success-border); color: var(--ghibli-success-text); font-weight: bold; }
+        .feedback-fail { background-color: var(--ghibli-error-bg); border-color: var(--ghibli-error-border); color: var(--ghibli-error-text); font-weight: bold; font-size: 1.15em; }
+        .feedback-box pre { background-color: transparent; padding: 0; border-radius: 0; white-space: pre-wrap; word-wrap: break-word; font-size: inherit; color: inherit; border: none; font-family: var(--font-primary); text-align: left; max-height: none; overflow: visible; }
+        .loading { font-style: italic; color: var(--ghibli-text-light); text-align: center; padding: 30px; font-size: 1.1em; border: 1px dashed var(--ghibli-border-color); border-radius: 8px; background-color: rgba(255, 255, 255, 0.6); }
+        @keyframes celebrate-box { 0% { transform: scale(1); box-shadow: var(--ghibli-shadow); } 50% { transform: scale(1.01); box-shadow: 0 8px 16px rgba(90, 142, 100, 0.2); } 100% { transform: scale(1); box-shadow: var(--ghibli-shadow); } }
+        #result.full-marks-celebration { animation: celebrate-box 1.8s ease-in-out; border: 1px solid var(--ghibli-success-border); box-shadow: 0 5px 10px rgba(90, 142, 100, 0.15); }
+        .rank-badge-section { text-align: center; margin-top: 25px; padding: 15px; background-color: rgba(224, 216, 204, 0.2); border: 1px solid var(--ghibli-border-color); border-radius: 8px; }
+        .badge-display { font-size: 1.3em; font-weight: bold; color: var(--ghibli-primary-dark); }
+        .badge-display span { font-size: 1.6em; vertical-align: middle; margin: 0 5px; color: var(--ghibli-primary); }
+        .rank-display { margin-top: 5px; font-size: 0.95em; color: var(--ghibli-text-light); }
 
     </style>
     <!-- External Libraries -->
@@ -459,36 +246,34 @@
 
         <!-- Left Column: Controls, Questions, Upload -->
         <div class="left-column">
-            <h1>AI 默寫</h1>
-            <p style="text-align: center; color: var(--ghibli-primary-dark);"><strong>高考默寫8分，放條狗都能拿滿！何況是你我！</strong></p>
-            <p style="text-align: center; color: var(--ghibli-error-text); font-weight: bold;">
-                4道題，按順序分四行，拍照上傳。確保字跡清晰！
-            </p>
-
-            <div class="button-group">
-                <button id="get-question-btn">開始挑戰</button>
-            </div>
-
-            <div id="status">狀態：等待挑戰...</div>
-
-            <div id="questions" style="display: none;">
-                <h2>筆墨伺候 (共 8 分)</h2>
-                <p style="text-align: center; color: var(--ghibli-text-light); font-style: italic;">
-                    <strong style="color: var(--ghibli-error-text);">‼️：請勿書寫題號，答案中**不要加標點符號**。‼️ </strong>
-                </p>
-                <div id="question-list"></div>
-            </div>
-
-            <div id="upload-section" style="display: none;">
-                <h2>拍照上傳</h2>
-                <label for="image-upload" id="image-upload-label">選擇或拍攝照片:</label>
-                <input type="file" id="image-upload" name="image-upload" accept="image/*">
-                <div id="compression-info"></div>
-                <div id="image-preview-container">
-                    <img id="image-preview" src="#" alt="圖片預覽">
-                </div>
-                 <button id="submit-btn" disabled>提交墨寶</button>
-            </div>
+             <h1>AI 默寫</h1>
+             <p style="text-align: center; color: var(--ghibli-primary-dark);"><strong>高考默寫8分，放條狗都能拿滿！何況是你我！</strong></p>
+             <p style="text-align: center; color: var(--ghibli-error-text); font-weight: bold;">
+                 4道題，按順序分四行，拍照上傳。確保字跡清晰！
+             </p>
+             <div class="button-group">
+                 <button id="get-question-btn">開始挑戰</button>
+             </div>
+             <div id="status">狀態：等待挑戰...</div>
+             <div id="questions" style="display: none;">
+                 <h2>筆墨伺候 (共 8 分)</h2>
+                 <p style="text-align: center; color: var(--ghibli-text-light); font-style: italic;">
+                     <strong style="color: var(--ghibli-error-text);">‼️：請勿書寫題號，答案中**不要加標點符號**。‼️ </strong>
+                 </p>
+                 <div id="question-list"></div>
+             </div>
+             <div id="upload-section" style="display: none;">
+                 <h2>拍照上傳</h2>
+                 <label for="image-upload" id="image-upload-label">選擇或拍攝照片:</label>
+                 <input type="file" id="image-upload" name="image-upload" accept="image/*">
+                 <div id="compression-info"></div>
+                 <div id="image-preview-container">
+                     <img id="image-preview" src="#" alt="圖片預覽">
+                 </div>
+                  <button id="submit-btn" disabled>提交墨寶</button>
+             </div>
+             <!-- Add dummy content to test left scroll -->
+             <!-- <div style="height:1200px; background:rgba(255,0,0,0.1);">Scroll Test Left</div> -->
         </div><!-- End Left Column -->
 
         <!-- Right Column: Results -->
@@ -496,7 +281,8 @@
             <div id="result" style="display: none;">
                 <!-- Result content injected here -->
             </div>
-            <!-- Footer is no longer here -->
+             <!-- Add dummy content to test right scroll -->
+             <!-- <div style="height:1200px; background:rgba(0,0,255,0.1);">Scroll Test Right</div> -->
         </div><!-- End Right Column -->
 
     </div> <!-- End Page Container -->
@@ -508,6 +294,8 @@
 
     <!-- Main Application Logic -->
     <script>
+        // --- Javascript unchanged from previous version ---
+        // (Paste the entire <script> block from the previous response here)
         // --- DOM Elements ---
         const statusDiv = document.getElementById('status');
         const questionsDiv = document.getElementById('questions');
@@ -587,7 +375,7 @@
                 // Scroll the relevant column into view if possible
                 if (container === resultDiv && rightColumn) {
                     rightColumn.scrollTo({ top: 0, behavior: 'smooth' });
-                } else if (container !== statusDiv) { // Scroll container into view if it's not the general status
+                } else if (container !== statusDiv && typeof container.scrollIntoView === 'function') { // Check if scrollIntoView exists
                      container.scrollIntoView({ behavior: 'smooth', block: 'center' });
                  }
              }
@@ -641,7 +429,11 @@
                     item.innerHTML = `<p><span class="question-text">${formattedQuestion}</span><span class="question-details">${detailsString}</span></p>`;
                     questionListDiv.appendChild(item);
                 });
-                questionsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                // Scroll left column to top when new questions load
+                 const leftColumn = document.querySelector('.left-column');
+                 if (leftColumn) leftColumn.scrollTo({ top: 0, behavior: 'smooth' });
+                 else questionsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' }); // Fallback
+
             } catch (error) {
                 console.error('Error fetching questions:', error);
                 displayError(`獲取題目時遇到問題: ${error.message || '未知錯誤'}`);
