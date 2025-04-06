@@ -8,10 +8,13 @@ import moniDataRaw from '../../data/moni.json';
 const KV_EXPIRATION_TTL_SECONDS = 3600; // 1 hour
 // ** 使用用戶指定的模型名稱 **
 // 注意：如果 Vision 模型不支持長上下文或 JSON 模式，OCR 或 反饋可能出錯
-const GEMINI_VISION_MODEL = "gemini-2.0-flash-thinking-exp-01-21"; // Reverted to potentially more stable model for Vision/OCR
-const GEMINI_TEXT_MODEL = "gemini-2.0-flash-thinking-exp-01-21";    // Reverted to potentially more stable model for Feedback
+const GEMINI_VISION_MODEL = "gemini-2.0-flash-thinking-exp-01-21"; // Changed to a potentially more stable/available model
+const GEMINI_TEXT_MODEL = "gemini-2.0-flash-thinking-exp-01-21";    // Changed to a potentially more stable/available model
 const GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/";
 const MAX_QUESTIONS_PER_SET = 4; // Target number of questions from moni.json
+const MAX_FEEDBACK_TOKENS = 3000; // Increased token limit for feedback (was 600)
+const API_RETRY_COUNT = 2; // Number of retries for API calls
+const API_RETRY_DELAY_MS = 1500; // Initial delay for retries
 
 // --- Type Definitions ---
 
@@ -27,7 +30,10 @@ interface QuestionInfo {
     id: string; // Unique ID for this specific question instance in the set
     question: string; // The question text from moni.json
     answer: string; // The reference_answer from moni.json
+    source?: string; // Added to match generatedQuestions mapping
+    topic?: string; // Added potential field
 }
+
 
 // For the entire set stored in KV
 interface QuestionSet {
@@ -41,7 +47,15 @@ interface GeminiTextPart { text: string; }
 interface GeminiImageDataPart { inline_data: { mime_type: string; data: string; }; }
 interface GeminiContent { parts: (GeminiTextPart | GeminiImageDataPart)[]; role?: string; }
 interface GeminiCandidate { content: GeminiContent; finishReason?: string; index?: number; safetyRatings?: any[]; }
-interface GeminiApiResponse { candidates?: GeminiCandidate[]; promptFeedback?: any; error?: { code: number; message: string; status: string }; }
+// Updated GeminiApiResponse to better reflect potential error structures
+interface GeminiErrorDetail { code: number; message: string; status: string; }
+interface GeminiApiResponse {
+    candidates?: GeminiCandidate[];
+    promptFeedback?: any;
+    // Google API errors might be nested under 'error'
+    error?: GeminiErrorDetail;
+}
+
 
 // For scoring results returned to frontend (Keep as they are)
 interface SubmissionResult {
@@ -102,53 +116,118 @@ function generateUniqueKey(prefix = 'answer', extension = '.png'): string {
      return `${prefix}-${Date.now()}-${crypto.randomUUID()}${extension}`;
 }
 
+// Helper function for async delay
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- Gemini API Call Function --- (Keep as it is)
+// --- Gemini API Call Function (Corrected Retry Logic & clonedResponse Scope) ---
 async function callGeminiAPI(apiKey: string, model: string, contents: GeminiContent[], generationConfig?: { maxOutputTokens?: number; temperature?: number; }): Promise<GeminiApiResponse> {
     const url = `${GEMINI_API_BASE_URL}${model}:generateContent?key=${apiKey}`;
-    console.log(`Calling Gemini API: ${url} with model ${model}`);
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents, generationConfig }),
-        });
-        console.log(`Gemini API response status: ${response.status}`);
+    let lastError: any = null;
 
-        if (!response.ok) {
-            const errorBody = await response.text();
-            console.error(`Gemini API Error Response Body:`, errorBody);
-            let detailMessage = `AI API Error (${response.status}): ${response.statusText}`;
+    for (let attempt = 0; attempt <= API_RETRY_COUNT; attempt++) {
+        console.log(`Calling Gemini API: ${url} (Model: ${model}, Attempt: ${attempt + 1}/${API_RETRY_COUNT + 1})`);
+        let response: Response | null = null; // Declare response outside try
+
+        try {
+            response = await fetch(url, { // Assign to outer response
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents, generationConfig }),
+            });
+            console.log(`Gemini API response status: ${response.status}`);
+
+            // --- Correction: Clone BEFORE potential JSON parsing ---
+            const clonedResponse = response.clone(); // Clone here, accessible in catch
+            let responseData: GeminiApiResponse | null = null;
+            let errorBodyText: string | null = null;
+
             try {
-                 const googleError = JSON.parse(errorBody);
-                 detailMessage = googleError?.error?.message || detailMessage;
-            } catch(e) { /* Ignore JSON parsing error */ }
-            throw new Error(detailMessage);
-        }
+                 // --- Correction: Use original 'response' for JSON attempt ---
+                 responseData = await response.json() as GeminiApiResponse;
 
-        const contentType = response.headers.get("content-type");
-        if (contentType && contentType.includes("application/json")) {
-            return await response.json() as GeminiApiResponse;
-        } else {
-             const textResponse = await response.text();
-             console.error("Gemini API returned non-JSON response:", textResponse);
-             throw new Error("AI API returned unexpected response format (non-JSON).");
+                 if (responseData?.error) {
+                     console.error(`Gemini API Error in JSON response body:`, responseData.error);
+                     const errorDetail = responseData.error;
+                     throw new Error(`AI API Error ${errorDetail.code} (${errorDetail.status}): ${errorDetail.message}`);
+                 }
+            } catch (jsonError: any) {
+                // --- Correction: Use 'clonedResponse' to read text if JSON failed ---
+                console.warn("Gemini API response was not valid JSON or JSON error parsing failed. Reading as text.", jsonError.message);
+                try {
+                     errorBodyText = await clonedResponse.text(); // Use the clone
+                     console.error(`Gemini API Error Response Body (Text):`, errorBodyText);
+                 } catch (textError: any) {
+                     console.error("Failed to read Gemini API response body as text:", textError);
+                     errorBodyText = "[Failed to read error body]";
+                 }
+
+                // If the original response status was not ok, throw based on status
+                // --- Correction: Check outer 'response' status ---
+                if (!response.ok) {
+                     throw new Error(`AI API Error (${response.status}): ${response.statusText}. Body: ${errorBodyText}`);
+                }
+                console.error("Gemini API returned ok status but invalid JSON response:", errorBodyText);
+                throw new Error("AI API returned unexpected response format (non-JSON or malformed JSON).");
+            }
+
+            // If response is OK and we have valid JSON data
+            // --- Correction: Check outer 'response' status ---
+            if (response.ok && responseData) {
+                // Check for potential non-error cases where candidates might be missing (e.g., safety filters)
+                if (!responseData.candidates && !responseData.error) {
+                    console.warn("Gemini API call successful but response data missing candidates without explicit error.", responseData);
+                    // Consider if this needs specific handling or if returning is sufficient
+                }
+                return responseData; // Success
+            }
+
+            // If response was not OK, re-throw (should have been caught above, but defense in depth)
+            // --- Correction: Check outer 'response' status ---
+            if (!response.ok) {
+                 throw new Error(`AI API Error (${response.status}): ${response.statusText}. Body: ${errorBodyText ?? JSON.stringify(responseData)}`);
+            }
+
+            // Fallback case (should be rare)
+            console.warn("Gemini API call status was ok but data is invalid:", responseData);
+            return responseData ?? {};
+
+        } catch (error: any) {
+            lastError = error;
+            console.error(`Gemini API Call Attempt ${attempt + 1} failed:`, error.message);
+
+            // --- Correction: Use outer 'response' status for retry logic if available ---
+            const statusCode = response?.status; // Get status code if response object exists
+            const errorMessage = error.message.toLowerCase();
+            const isOverloaded = errorMessage.includes("overloaded") || errorMessage.includes("resource has been exhausted") || errorMessage.includes("try again later");
+            // Check status code OR message for retryable conditions
+            const isRetryableStatusCode = statusCode === 503 || statusCode === 500 || statusCode === 429;
+
+
+            if ((isOverloaded || isRetryableStatusCode) && attempt < API_RETRY_COUNT) {
+                const delayTime = API_RETRY_DELAY_MS * Math.pow(2, attempt);
+                console.log(`Retryable error detected (Status: ${statusCode}, Message: ${error.message}). Retrying in ${delayTime}ms...`);
+                await delay(delayTime);
+                continue;
+            }
+
+            console.error("Non-retryable error or retries exhausted. Throwing last error.");
+            throw lastError;
         }
-    } catch (error: any) {
-        console.error("Network or other error calling Gemini API:", error);
-        throw new Error(`Failed to communicate with AI service: ${error.message || 'Unknown network error'}`);
     }
+    // Safeguard
+    throw lastError || new Error("Gemini API call failed after all retries.");
 }
 
-// --- **TYPE GUARD for moni.json data** --- (Requirement 1 & 2)
+// --- **TYPE GUARD for moni.json data** --- (Remains the same)
 function isValidMoniData(data: any): data is MoniQuestion[] {
-    console.log("isValidMoniData: Function called"); 
+    // ... (implementation is unchanged)
+    console.log("isValidMoniData: Function called");
 
     if (!Array.isArray(data)) {
         const errorMessage = "Data is not an array."; // More specific error
-        console.error("isValidMoniData: Input is not an array.", data); 
+        console.error("isValidMoniData: Input is not an array.", data);
         // Include detail in the returned error message
-        throw new Error(errorMessage); 
+        throw new Error(errorMessage);
     }
     if (data.length === 0) {
         const errorMessage = "Data array is empty."; // More specific error
@@ -162,8 +241,8 @@ function isValidMoniData(data: any): data is MoniQuestion[] {
                     typeof sample?.reference_answer === 'string';
     if (!isValid) {
         const errorMessage = "First item in data array is invalid. Structure is incorrect."; // More specific
-        console.error("isValidMoniData: First item structure is invalid.", sample); 
-        console.error("Types:", { 
+        console.error("isValidMoniData: First item structure is invalid.", sample);
+        console.error("Types:", {
             type: typeof sample?.type,
             question: typeof sample?.question,
             reference_answer: typeof sample?.reference_answer
@@ -174,8 +253,10 @@ function isValidMoniData(data: any): data is MoniQuestion[] {
     return isValid;
 }
 
+
 // --- Main Request Handler ---
 export const onRequest: PagesFunction<Env> = async (context) => {
+    // ... (Initial setup, headers, OPTIONS handling, env check remain the same)
     console.log("onRequest: API request received");
     const { request, env, params } = context;
     const url = new URL(request.url);
@@ -199,8 +280,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
          return new Response(JSON.stringify({ error: "Server configuration error. Please contact administrator." }), { status: 500, headers: baseHeaders });
     }
 
-    // --- **DATA VALIDATION** --- (Requirement 1 & 2)
-    // Validate the structure of the imported moni.json data
+    // --- **DATA VALIDATION** --- (Remains the same)
     let moniQuestions: MoniQuestion[];
     if (isValidMoniData(moniDataRaw)) {
         moniQuestions = moniDataRaw;
@@ -211,21 +291,23 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         return new Response(JSON.stringify({ error: "內部題庫數據格式錯誤，無法提供服務。" }), { status: 500, headers: baseHeaders });
     }
 
-
     try {
         // --- API Routing ---
 
+        // ... ('/hello' route remains the same)
         if (apiPath === 'hello' && request.method === 'GET') {
             const dataInfo = {
                 message: "Backend is running.",
                 status: "OK",
                 timestamp: new Date().toISOString(),
                 moniQuestionsLoaded: moniQuestions.length, // Report count from validated moni data
+                modelsUsed: { vision: GEMINI_VISION_MODEL, text: GEMINI_TEXT_MODEL },
+                maxFeedbackTokens: MAX_FEEDBACK_TOKENS
             };
             return new Response(JSON.stringify(dataInfo), { headers: baseHeaders });
         }
 
-        // --- **NEW**: Start Question Set API using moni.json --- (Requirement 1 & 2)
+        // ... ('/start_set' route remains the same)
         if (apiPath === 'start_set' && request.method === 'GET') {
             console.log("Processing /api/start_set request using pre-defined moni.json");
 
@@ -245,7 +327,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                     id: crypto.randomUUID(), // Generate unique ID for this instance
                     question: moniQ.question,
                     answer: moniQ.reference_answer,
+                    // Keep track of the original type, maybe useful for frontend display or filtering later
                     source: moniQ.type // Use the type field as the source category
+                    // topic field could be added here if available in moni.json or derived
                 };
             });
 
@@ -268,9 +352,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         } // End /api/start_set (moni.json version)
 
 
-        // API Endpoint to submit answers (image upload)
-        // This part remains largely the same, but uses the questions fetched based on moni.json
+        // --- '/submit' route ---
         if (apiPath === 'submit' && request.method === 'POST') {
+            // ... (Request parsing, validation, KV retrieval, R2 storage remain the same)
             console.log("Processing /api/submit request");
 
             // --- Request Parsing and Validation ---
@@ -330,8 +414,10 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                  console.log(`Stored image in R2 with key: ${r2Key} for setId: ${setId}`);
             } catch (r2Error: any) {
                  console.error(`R2 put error for key ${r2Key}:`, r2Error);
-                 throw new Error(`圖片存儲失敗: ${r2Error.message || 'Unknown R2 error'}`);
+                 // Return error response if R2 fails
+                  return new Response(JSON.stringify({ error: `圖片存儲失敗: ${r2Error.message || 'Unknown R2 error'}` }), { status: 500, headers: baseHeaders });
             }
+
 
             // --- Call Gemini Vision for OCR ---
             const base64ImageData = arrayBufferToBase64(imageBuffer);
@@ -348,31 +434,58 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             }];
 
             try {
+                // Use the updated callGeminiAPI with retry logic
                 const geminiResult = await callGeminiAPI(env.GEMINI_API_KEY, GEMINI_VISION_MODEL, ocrContents, { maxOutputTokens: 800, temperature: 0.1 });
                 const ocrDuration = Date.now() - ocrStartTime;
                 console.log(`Gemini OCR completed for setId ${setId} in ${ocrDuration}ms.`);
 
                 const candidate = geminiResult.candidates?.[0];
                 const part = candidate?.content?.parts?.[0];
+
+                 // Check finish reason for OCR as well
+                 const ocrFinishReason = candidate?.finishReason;
+                 console.log(`Gemini OCR candidate finish reason: ${ocrFinishReason} for setId: ${setId}`);
+                 if (ocrFinishReason && ocrFinishReason !== "STOP") {
+                     console.warn(`OCR process potentially incomplete. Finish Reason: ${ocrFinishReason}`);
+                     // Optionally add this to ocrError
+                     ocrError = ocrError ? `${ocrError}. ` : ''; // Append if error exists
+                     ocrError += `AI處理可能未完成 (${ocrFinishReason})。`;
+                 }
+
+
                 if (part && 'text' in part) {
                     recognizedTextCombined = part.text.trim();
+                } else if (geminiResult.error) { // Check explicit error structure first
+                     ocrError = `AI OCR 服務錯誤: ${geminiResult.error.message}`;
+                     console.error(`OCR API Error from structure for setId ${setId}:`, geminiResult.error);
                 } else {
-                    ocrError = "AI OCR 返回了非預期的響應格式。";
-                    console.warn(`OCR Result format issue for setId ${setId}. Part:`, part);
+                    ocrError = "AI OCR 返回了非預期的響應格式 (無文本部分)。";
+                    console.warn(`OCR Result format issue for setId ${setId}. Full Response:`, JSON.stringify(geminiResult));
                 }
 
                 if (!ocrError && !recognizedTextCombined) {
-                    ocrError = "AI OCR 未能識別出任何文本內容。";
-                    console.warn(`OCR Result empty for setId ${setId}`);
+                     // If no text and no specific error, check finish reason again
+                     if (ocrFinishReason === "SAFETY") {
+                         ocrError = "AI OCR 因安全設置拒絕處理圖片內容。";
+                     } else if (ocrFinishReason === "RECITATION") {
+                         ocrError = "AI OCR 因檢測到引用內容而停止。";
+                     } else if (ocrFinishReason === "MAX_TOKENS") {
+                         ocrError = "AI OCR 處理超時或輸出長度受限。";
+                     } else {
+                         ocrError = "AI OCR 未能識別出任何文本內容。";
+                     }
+                    console.warn(`OCR Result empty for setId ${setId}. Finish Reason: ${ocrFinishReason}`);
                 } else if (!ocrError) {
                     console.log(`Raw OCR result for setId ${setId}: "${recognizedTextCombined.replace(/\n/g, '\\n')}"`);
-                    splitAnswers = recognizedTextCombined.split('\n').map(s => s.trim()).filter(s => s);
+                    // Ensure splitting handles potential empty lines robustly
+                    splitAnswers = recognizedTextCombined.split('\n').map(s => s.trim()); //.filter(s => s); <- Keep empty strings initially for count
 
                     if (splitAnswers.length !== expectedQuestionCount) {
                         console.warn(`OCR split count mismatch for setId ${setId}: expected ${expectedQuestionCount}, got ${splitAnswers.length}. Raw: "${recognizedTextCombined}"`);
-                        ocrError = `AI OCR 未能準確分割出 ${expectedQuestionCount} 個答案 (找到了 ${splitAnswers.length} 個)。答案可能擠在一起或無法識別。`;
-                        // Pad or truncate to match the expected number
-                        while (splitAnswers.length < expectedQuestionCount) splitAnswers.push("[答案提取失敗]");
+                        // Try to be smarter about padding/truncating based on raw text if possible
+                        ocrError = `AI OCR 未能準確分割出 ${expectedQuestionCount} 個答案 (找到了 ${splitAnswers.length} 個)。答案可能擠在一起或部分無法識別。`;
+                        // Pad or truncate to match the expected number, using a clearer placeholder
+                        while (splitAnswers.length < expectedQuestionCount) splitAnswers.push("[答案缺失]");
                         if (splitAnswers.length > expectedQuestionCount) splitAnswers = splitAnswers.slice(0, expectedQuestionCount);
                     } else {
                         console.log(`Successfully split OCR into ${splitAnswers.length} answers for setId ${setId}.`);
@@ -381,63 +494,73 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             } catch (err: any) {
                  console.error(`Gemini OCR API call failed for setId ${setId}:`, err);
                  ocrError = `AI OCR 識別服務調用失敗: ${err.message}`;
-                 splitAnswers = Array(expectedQuestionCount).fill(`[AI調用失敗]`);
+                 // Populate splitAnswers with failure message for all questions
+                 splitAnswers = Array(expectedQuestionCount).fill(`[OCR調用失敗]`); // Use a distinct message
             }
 
-            // --- Scoring ---
+            // --- Scoring --- (Remains largely the same logic)
             const results: SubmissionResult[] = [];
             let totalScore = 0;
-            const pointsPerQuestion = expectedQuestionCount > 0 ? (8 / expectedQuestionCount) : 0; // Should be 2 points per question if 4 questions
+            const pointsPerQuestion = expectedQuestionCount > 0 ? (8 / expectedQuestionCount) : 0;
 
-// --- (Requirement 4) Function to remove punctuation ---
-function removePunctuation(text: string): string { // 顯式指定 text 參數類型為 string，並指定函數返回類型為 string
-    if (typeof text !== 'string') return text;
-    return text.replace(/[\p{P}]/gu, '');
-}
-
+            function removePunctuation(text: string): string {
+                if (typeof text !== 'string') return text;
+                return text.replace(/[\p{P}\p{S}\p{Z}]+/gu, '');
+            }
 
             for (let i = 0; i < expectedQuestionCount; i++) {
-                const recognized = splitAnswers[i] || "[答案缺失]";
+                const recognized = splitAnswers[i] !== undefined ? splitAnswers[i] : "[答案缺失]"; // Handle potential undefined
                 const correct = correctAnswers[i];
                 const questionId = questionIds[i];
                 let isCorrect = false;
                 let score = 0;
-                let success = !recognized.startsWith("[") || recognized === "[無法識別]"; // Assume success unless explicit failure placeholder
+                // Assume success unless explicit failure placeholder from OCR step
+                let success = !recognized.startsWith("[") || recognized === "[無法識別]";
                 let itemError: string | undefined = undefined;
 
-                // Perform comparison, ignoring punctuation (Requirement 4)
+                // Map OCR failure placeholders to errors and non-success
+                if (recognized === "[OCR調用失敗]" || recognized === "[答案提取失敗]" || recognized === "[答案缺失]") {
+                    itemError = recognized.substring(1, recognized.length - 1);
+                    success = false;
+                } else if (recognized === "[無法識別]") {
+                     itemError = "AI 無法識別此答案";
+                     success = false; // Mark as unsuccessful if unrecognizable
+                 }
+
+
+                // Perform comparison only if OCR was successful for this item
                 if (success && correct !== undefined) {
                     const cleanedRecognized = removePunctuation(recognized);
                     const cleanedCorrect = removePunctuation(correct);
-                    isCorrect = cleanedRecognized === cleanedCorrect;
+                    // Check for non-empty comparison
+                    isCorrect = cleanedRecognized === cleanedCorrect && cleanedRecognized !== "";
 
-                    if (recognized === "[無法識別]") {
-                        isCorrect = false;
-                        itemError = "AI 無法識別此答案";
-                        success = false; // Mark as unsuccessful if unrecognizable
-                    }
+                     if (!isCorrect && cleanedRecognized === "" && recognized !== "") {
+                         // Recognized contained only punctuation/whitespace
+                         itemError = "識別結果僅包含標點或空格";
+                     } else if (recognized.trim() === "" && !itemError) {
+                         // Truly empty answer might indicate not attempted
+                         itemError = "未作答或未識別到內容";
+                         // Consider if this should be success=false? Depends on definition.
+                         // For now, keeping success=true if OCR didn't explicitly fail.
+                     }
+
                     score = isCorrect ? pointsPerQuestion : 0;
-                } else if (!success) { // Handle other failure cases
-                    if (recognized === "[答案提取失敗]" || recognized === "[AI調用失敗]" || recognized === "[答案缺失]") {
-                        itemError = recognized.substring(1, recognized.length - 1);
-                    } else {
-                         itemError = "處理時發生未知錯誤"; // Generic fallback
-                    }
+                } else {
+                    // If OCR failed (success is false) or correct answer is missing
                     isCorrect = false;
                     score = 0;
-                } else { // Case where correct answer might be missing (shouldn't happen with moni.json)
-                     itemError = "標準答案缺失";
-                     isCorrect = false;
-                     score = 0;
-                     success = false;
-                }
-
+                    if (correct === undefined) {
+                         itemError = itemError ? `${itemError}; 標準答案缺失` : "標準答案缺失";
+                         success = false; // Definitely not successful if standard answer missing
+                    }
+                 }
 
                 results.push({
                      questionIndex: i,
                      questionId: questionId,
                      success: success,
-                     recognizedText: recognized,
+                     recognizedText: recognized, // Keep original for display
                      correctAnswer: correct || "[標準答案缺失]",
                      isCorrect: isCorrect,
                      score: score,
@@ -448,12 +571,13 @@ function removePunctuation(text: string): string { // 顯式指定 text 參數�
             totalScore = Math.round(totalScore * 10) / 10; // Round score
             console.log(`Scoring complete for setId ${setId}. Total score: ${totalScore} / 8`);
 
-            // --- Generate Feedback using AI --- (Requirement 5: Dynamic Scolding)
+            // --- Generate Feedback using AI ---
             let feedback = "";
             const feedbackStartTime = Date.now();
             let feedbackErrorMsg: string | null = null;
+            let feedbackFinishReason: string | null = null; // Track feedback finish reason
 
-            // --- (Requirement 6) Rank and Badge Variables ---
+            // ... (Rank/Badge logic remains the same)
             let currentRank = 0; // 默認階級
             let badge = "";
             const rankKey = `user-rank-${setId}`; // 使用 setId 作為 session 標識
@@ -470,33 +594,34 @@ function removePunctuation(text: string): string { // 顯式指定 text 參數�
             }
 
 
-            // Check score against the target of 8
             if (totalScore === 8) {
-                 // (Requirement 3 handled in frontend)
                  feedback = `非常好！滿分 8 分！簡直是MXDS（默寫的神）！繼續保持！`;
                  feedbackErrorMsg = null;
+                 // --- Rank Increase and Badge ---
+                 currentRank++;
+                 badge = `${convertToChineseRank(currentRank)}階`;
+                 if (currentRank === 1) badge = `初窺門徑`; // Special first rank
+                 if (currentRank >= 7) badge = `巔峰七階`; // Cap badge display?
 
-                 // --- (Requirement 6) Rank Increase and Badge for Full Marks ---
-                 currentRank++; // 全對，升階
-                 badge = `巔峰七階`; // 默認徽章，可以根據階級設定更豐富的徽章系統
-                 if (currentRank > 1) {
-                     badge = `${convertToChineseRank(currentRank)}階`; // 使用函數轉換數字階級為中文
-                 }
 
             } else {
-                // Prepare details for the "angry teacher" prompt
+                // Prepare details for the gentle prompt
                 const incorrectResults = results.filter(r => !r.isCorrect);
                 const errorDetails = incorrectResults
                     .map((r: SubmissionResult) => {
                         let reason = r.error ? `(原因: ${r.error})` : '(內容錯誤)';
+                        // Make reasons clearer
                         if (r.recognizedText === '[無法識別]') reason = '(字跡無法識別)';
-                        else if (r.recognizedText.startsWith('[')) reason = '(答案提取失敗)';
+                        else if (r.recognizedText === '[答案缺失]') reason = '(未找到對應答案)';
+                        else if (r.recognizedText === '[答案提取失敗]') reason = '(答案提取過程失敗)';
+                        else if (r.recognizedText === '[OCR調用失敗]') reason = '(圖片識別過程失敗)';
+                        else if (removePunctuation(r.recognizedText) === '') reason = '(未作答或僅有標點)';
+
                         return `第 ${r.questionIndex + 1} 題 ${reason}:\n  你的答案: "${r.recognizedText}"\n  正確答案: "${r.correctAnswer}"`;
                     })
                     .join('\n\n');
 
-// A truly gentle prompt
-const feedbackPrompt = `你扮演一位非常溫和、有耐心的高考語文老師，你的目標是幫助學生從錯誤中學習，建立信心。學生這次默寫考試（滿分8分）沒有拿到滿分，得分 ${totalScore.toFixed(1)}，失分 ${(8-totalScore).toFixed(1)}。你需要用充滿鼓勵和關懷的語氣來進行點評。
+                const feedbackPrompt = `你扮演一位非常溫和、有耐心的高考語文老師，你的目標是幫助學生從錯誤中學習，建立信心。學生這次默寫考試（滿分8分）沒有拿到滿分，得分 ${totalScore.toFixed(1)}，失分 ${(8-totalScore).toFixed(1)}。你需要用充滿鼓勵和關懷的語氣來進行點評。
 
 務必包含以下要素：
 1.  溫和地指出得分和失分，強調進步的空間和潛力。
@@ -506,156 +631,177 @@ const feedbackPrompt = `你扮演一位非常溫和、有耐心的高考語文�
 5.  字數要求：至少150字以上，確保內容充滿關懷和指導性。
 
 錯誤詳情:
-\${errorDetails || "）"}
-\${ocrError ? \`\\nOCR系統提示: \${ocrError}。\` : ''}
+${errorDetails || "（雖然沒有檢測到具體的單題錯誤細節，但整體仍有提升空間，繼續努力！）"}
+${ocrError ? `\n圖片識別提示: ${ocrError}` : ''}
 
 現在，請開始用溫和且鼓勵的語氣進行點評吧！`;
 
+
                 try {
-                    console.log(`Generating ANGRY AI feedback for setId ${setId}...`);
+                    console.log(`Generating Gentle AI feedback for setId ${setId}...`);
                     const feedbackContents: GeminiContent[] = [{ parts: [{ text: feedbackPrompt }] }];
-                    const feedbackResult = await callGeminiAPI(env.GEMINI_API_KEY, GEMINI_TEXT_MODEL, feedbackContents, { maxOutputTokens: 600, temperature: 0.8 });
+                    // Use updated callGeminiAPI with retry logic and increased token limit
+                    const feedbackResult = await callGeminiAPI(
+                        env.GEMINI_API_KEY,
+                        GEMINI_TEXT_MODEL,
+                        feedbackContents,
+                        { maxOutputTokens: MAX_FEEDBACK_TOKENS, temperature: 0.8 }
+                    );
 
                     // --- **ROBUST RESPONSE PROCESSING** ---
-                    let generatedText: string | null = null; // 用於存儲成功提取的文本
-                    let extractionFailureReason = "Unknown structure issue"; // 記錄提取失敗的原因
+                    let generatedText: string | null = null;
+                    let extractionFailureReason = "Unknown structure issue";
 
-                    // 1. 檢查 candidates 是否存在且有內容
-                    if (feedbackResult.candidates && feedbackResult.candidates.length > 0) {
-                        const candidate = feedbackResult.candidates[0];
-                        const finishReason = candidate.finishReason; // 獲取結束原因
+                    const candidate = feedbackResult.candidates?.[0];
+                    feedbackFinishReason = candidate?.finishReason ?? null; // Store finish reason
+                    console.log(`Gemini feedback generation candidate finish reason: ${feedbackFinishReason} for setId: ${setId}`);
 
-                        // 記錄一下結束原因，有助於診斷 (例如 MAX_TOKENS)
-                        console.log(`Gemini feedback generation candidate finish reason: ${finishReason} for setId: ${setId}`);
 
-                        // 2. 檢查 content 和 parts 是否存在且有內容
-                        if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
-                            const feedbackPart = candidate.content.parts[0]; // Type is GeminiTextPart | GeminiImageDataPart
-
-                            // --- **CORRECTED TYPE NARROWING** ---
-                            // 3. 檢查 parts[0] 是否確實是一個包含 'text' 屬性的對象 (即 GeminiTextPart)
-                            if (feedbackPart && 'text' in feedbackPart) {
-                                // *** 在這個 if 區塊內部，TypeScript 會將 feedbackPart 的類型收窄為 GeminiTextPart ***
-                                // *** 因此，現在訪問 feedbackPart.text 是類型安全的 ***
-
-                                // 4. 檢查提取出的 text 是否為非空字符串 (去除首尾空格後)
-                                //    因為上面已經檢查過 'text' in feedbackPart，所以這裡 feedbackPart.text 一定存在且是 string
-                                const trimmedText = feedbackPart.text.trim();
-                                if (trimmedText.length > 0) {
-                                    generatedText = trimmedText; // 成功提取！
-                                    extractionFailureReason = ""; // 清空失敗原因
-                                } else {
-                                    extractionFailureReason = "Extracted text is empty after trimming.";
-                                    console.warn(`AI feedback generation returned an empty text string for setId ${setId}.`);
-                                }
-                            } else {
-                                // 如果 feedbackPart 不存在，或者它沒有 'text' 屬性 (例如它是 GeminiImageDataPart)
-                                extractionFailureReason = "First part exists but is not a text part (e.g., image data or missing 'text' property).";
-                                console.warn(`AI feedback generation: parts[0] is not a valid text part for setId ${setId}. Part content:`, JSON.stringify(feedbackPart));
-                            }
+                    if (candidate?.content?.parts?.[0] && 'text' in candidate.content.parts[0]) {
+                        const trimmedText = candidate.content.parts[0].text.trim();
+                        if (trimmedText.length > 0) {
+                            generatedText = trimmedText;
+                            extractionFailureReason = "";
                         } else {
-                            extractionFailureReason = "Candidate content or parts array is missing or empty.";
-                            console.warn(`AI feedback generation: Response structure missing content or parts for setId ${setId}. Candidate:`, JSON.stringify(candidate));
+                            extractionFailureReason = "Extracted text is empty after trimming.";
+                            console.warn(`AI feedback generation returned an empty text string for setId ${setId}. Finish Reason: ${feedbackFinishReason}`);
                         }
-                    } else {
-                        extractionFailureReason = "Response contains no candidates.";
-                        console.warn(`AI feedback generation: Response contains no candidates for setId ${setId}.`);
+                    } else if (feedbackResult.error) { // Check explicit error structure
+                         extractionFailureReason = `API Error in response: ${feedbackResult.error.message}`;
+                         console.error(`AI feedback generation encountered an API error in the response structure for setId ${setId}:`, feedbackResult.error);
                     }
-                    // --- **END ROBUST PROCESSING** ---
+                    else {
+                         // Different potential failures
+                         if (!feedbackResult.candidates || feedbackResult.candidates.length === 0) {
+                             extractionFailureReason = "Response contains no candidates.";
+                         } else if (!candidate?.content?.parts || candidate.content.parts.length === 0) {
+                             extractionFailureReason = "Candidate content or parts array is missing or empty.";
+                         } else {
+                             extractionFailureReason = "First part exists but is not a text part.";
+                         }
+                         console.warn(`AI feedback generation: ${extractionFailureReason} for setId ${setId}. Full Response:`, JSON.stringify(feedbackResult));
+                    }
 
-
-                    // --- 根據提取結果決定最終反饋 ---
-                    if (generatedText !== null) {
-                        // --- 成功提取 AI 生成的文本 ---
-                        feedback = generatedText;
-                        feedbackErrorMsg = null; // 標記為成功
-                        const feedbackDuration = Date.now() - feedbackStartTime;
-                        console.log(`AI feedback (angry) generated and extracted successfully for setId ${setId} in ${feedbackDuration}ms.`);
-                    } else {
-                        // --- 未能成功提取文本，使用後備方案 ---
-                        console.error(`Failed to extract valid AI feedback text for setId ${setId}. Reason: ${extractionFailureReason}. Using fallback.`);
-                        // **關鍵：在日誌中打印完整的原始 API 回應，以便徹底分析結構**
+                    // Handle finish reason issues
+                    if (feedbackFinishReason && feedbackFinishReason !== "STOP" && generatedText !== null) {
+                        // If text was generated but finish reason is not STOP, append a warning
+                        let reasonWarning = "";
+                        if (feedbackFinishReason === "MAX_TOKENS") reasonWarning = "回覆可能因長度限制被截斷。";
+                        else if (feedbackFinishReason === "SAFETY") reasonWarning = "回覆可能因安全設置被部分過濾。";
+                        else if (feedbackFinishReason === "RECITATION") reasonWarning = "回覆可能因檢測到引用內容而提前終止。";
+                        else reasonWarning = `回覆處理因 (${feedbackFinishReason}) 而結束。`;
+                        feedback = `${generatedText}\n\n[系統提示: ${reasonWarning}]`;
+                        feedbackErrorMsg = reasonWarning; // Also report as an issue
+                    } else if (generatedText !== null) {
+                         // Success
+                         feedback = generatedText;
+                         feedbackErrorMsg = null;
+                         console.log(`AI feedback (gentle) generated and extracted successfully for setId ${setId}.`);
+                     }
+                     else {
+                        // Failed to extract text
+                        console.error(`Failed to extract valid AI feedback text for setId ${setId}. Reason: ${extractionFailureReason}. Finish Reason: ${feedbackFinishReason}. Using fallback.`);
                         console.error("Full Gemini Response causing fallback:", JSON.stringify(feedbackResult, null, 2));
-                        feedbackErrorMsg = `AI 反饋生成成功，但內容提取失敗 (${extractionFailureReason})。`; // 提供更詳細的錯誤信息
-                        // 使用之前的後備反饋
-                        feedback = `得分 ${totalScore.toFixed(1)}！ 錯了 ${ (8 - totalScore).toFixed(1)} 分！還想不想考大學了？！回去把錯的給我抄爛！\n錯誤:\n${errorDetails || '連詳細錯誤都沒生成出來，你說你有多差勁！'}`;
+
+                        let fallbackReason = extractionFailureReason;
+                         if (!fallbackReason.toLowerCase().includes("api error")) {
+                             // Add finish reason info if it's not STOP and not already part of the error
+                             if (feedbackFinishReason && feedbackFinishReason !== "STOP") {
+                                fallbackReason += ` (處理結束原因: ${feedbackFinishReason})`;
+                             }
+                         }
+
+                        feedbackErrorMsg = `AI 反饋生成成功，但內容提取失敗 (${fallbackReason})。`;
+                        feedback = `得分 ${totalScore.toFixed(1)}，失分 ${(8 - totalScore).toFixed(1)}。這次表現還有進步空間哦。看看下面的錯誤細節，下次加油！\n錯誤詳情:\n${errorDetails || "（未能生成詳細的錯誤分析）"}`;
                     }
 
                 } catch (feedbackError: any) {
-                     // --- API 調用本身失敗 (保持不變) ---
+                     // API call itself failed (after retries)
                      console.error(`Gemini feedback generation failed for setId ${setId}:`, feedbackError);
                      feedbackErrorMsg = `AI 反饋生成服務調用失敗: ${feedbackError.message}`;
-                     // 使用後備反饋
-                     feedback = `得分 ${totalScore.toFixed(1)}！ 錯了 ${ (8 - totalScore).toFixed(1)} 分！還想不想考大學了？！回去把錯的給我抄爛！\n錯誤:\n${errorDetails || '連詳細錯誤都沒生成出來，你說你有多差勁！'}`;
+                     feedback = `得分 ${totalScore.toFixed(1)}，失分 ${(8 - totalScore).toFixed(1)}。這次表現還有進步空間哦。看看下面的錯誤細節，下次加油！\n錯誤詳情:\n${errorDetails || "（未能生成詳細的錯誤分析）"}`;
                 }
 
-                 // --- (Requirement 6) Rank Decrease for Non-Full Marks ---
+                 // --- Rank Decrease ---
                  if (currentRank > 0) {
-                     currentRank--; // 答錯，降階，但不低於 0
+                     currentRank--;
                  }
-                 badge = currentRank > 0 ? `${convertToChineseRank(currentRank)}階` : ""; // 階級徽章可能消失或顯示最低階
+                 badge = currentRank > 0 ? `${convertToChineseRank(currentRank)}階` : "初窺門徑";
+                  if (currentRank >= 7) badge = `巔峰七階`; // Cap badge display?
             }
 
-            // --- (Requirement 6) Store Updated Rank back to KV ---
+            // --- Store Updated Rank ---
             try {
                 await env.SESSION_KV.put(rankKey, String(currentRank), { expirationTtl: KV_EXPIRATION_TTL_SECONDS });
                 console.log(`Rank updated to ${currentRank} for setId ${setId}`);
             } catch (kvPutRankError) {
                 console.error("Failed to put rank to KV:", kvPutRankError);
-                // 錯誤處理，例如記錄日誌，但不影響主要功能
             }
-
 
             // --- Prepare Final Response ---
             let finalMessage = "評分完成。";
             if (ocrError && feedbackErrorMsg) {
-                finalMessage = "評分完成，但 OCR 識別和 AI 反饋生成均遇到問題。";
+                finalMessage = "評分完成，但圖片識別和 AI 反饋生成均遇到問題。";
             } else if (ocrError) {
-                finalMessage = "評分完成，但 OCR 識別過程遇到問題。";
+                finalMessage = "評分完成，但圖片識別過程遇到問題。";
             } else if (feedbackErrorMsg) {
-                finalMessage = "評分完成，但 AI 反饋生成過程遇到問題。";
+                 // Include finish reason details in the message if relevant
+                 let feedbackIssueDetail = feedbackErrorMsg;
+                 if (feedbackFinishReason && feedbackFinishReason !== "STOP" && !feedbackErrorMsg.includes(feedbackFinishReason)) {
+                     feedbackIssueDetail += ` (原因: ${feedbackFinishReason})`;
+                 }
+                 finalMessage = `評分完成，但 AI 反饋生成過程遇到問題: ${feedbackIssueDetail}`;
             }
+
 
             const responseData = {
                 message: finalMessage,
                 totalScore: totalScore,
                 results: results,
-                feedback: feedback,
+                feedback: feedback, // Contains combined feedback + system warnings if needed
                 r2Key: r2Key,
-                ocrIssue: ocrError,
-                feedbackIssue: feedbackErrorMsg,
-                rank: currentRank, // (Requirement 6) Add rank to response
-                badge: badge      // (Requirement 6) Add badge to response
+                ocrIssue: ocrError, // Contains specific OCR error
+                feedbackIssue: feedbackErrorMsg, // Contains specific feedback error/warning
+                rank: currentRank,
+                badge: badge
             };
             return new Response(JSON.stringify(responseData), { headers: baseHeaders });
         } // End /api/submit
 
         // --- Fallback for unmatched API routes ---
-        console.log(`API route not found: /api/${apiPath}`);
-        return new Response(JSON.stringify({ error: `API route /api/${apiPath} not found` }), { status: 404, headers: baseHeaders });
+        console.warn(`API route not found: /api/${apiPath}`);
+        return new Response(JSON.stringify({ error: `API 路由 /api/${apiPath} 未找到` }), { status: 404, headers: baseHeaders });
 
     } catch (error: any) {
         console.error(`Unhandled error processing /api/${apiPath}:`, error);
         const status = (typeof error.status === 'number' && error.status >= 400 && error.status < 600) ? error.status : 500;
-        const errorMessage = (status < 500 && error.message) ? error.message : '伺服器內部錯誤，請稍後再試。';
+        const specificError = error.message || '伺服器內部發生未知錯誤';
+        const errorMessage = (status < 500) ? `請求處理錯誤: ${specificError}` : `伺服器內部錯誤 (${status})，請稍後再試或聯繫管理員。`;
+
         if (status >= 500) {
-            console.error(`Responding with Internal Server Error (${status}). Stack:`, error.stack);
+            console.error(`Responding with Internal Server Error (${status}). Error: ${specificError}. Stack:`, error.stack);
+        } else {
+            console.warn(`Responding with Client Error (${status}). Error: ${specificError}`);
         }
         return new Response(JSON.stringify({ error: errorMessage }), { status: status, headers: baseHeaders });
     }
 }; // End onRequest Handler
 
 
-// --- (Requirement 6) Helper function to convert rank to Chinese numerals ---
-function convertToChineseRank(rank: number): string { // 顯式指定 rank 參數類型為 number，並指定函數返回類型為 string
+// --- Helper function to convert rank to Chinese numerals --- (Remains the same)
+function convertToChineseRank(rank: number): string {
+    if (rank <= 0) return "零";
+
     const chineseNumbers = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
     if (rank <= 10) {
         return chineseNumbers[rank];
     } else if (rank < 20) {
         return "十" + chineseNumbers[rank - 10];
-    } else if (rank % 10 === 0) {
+    } else if (rank % 10 === 0 && rank < 100) {
         return chineseNumbers[Math.floor(rank / 10)] + "十";
-    } else {
+    } else if (rank < 100) {
         return chineseNumbers[Math.floor(rank / 10)] + "十" + chineseNumbers[rank % 10];
+    } else {
+        return `${rank}`; // Default for higher numbers
     }
 }
