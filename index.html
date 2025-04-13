@@ -1,15 +1,11 @@
 <!DOCTYPE html>
-<html lang="zh-CN"> <!-- More specific language code -->
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="北大附中 孙玉磊"> <!-- Enhanced description -->
-    <!-- <meta name="keywords" content="北大附中, 孙玉磊"> Keywords meta tag is largely ignored -->
-    <meta name="robots" content="index, follow"> <!-- Standard robots meta -->
-
-    <!-- Favicon / Icons -->
-    <link rel="icon" href="https://raw.githubusercontent.com/gptv/suen/main/images/Avatar-small.jpeg" type="image/jpeg"> <!-- Provided icon -->
-    <!-- Recommended: Add standard favicons in root directory -->
+    <meta name="description" content="北大附中 孙玉磊">
+    <meta name="robots" content="index, follow">
+    <link rel="icon" href="https://raw.githubusercontent.com/gptv/suen/main/images/Avatar-small.jpeg" type="image/jpeg">
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
@@ -19,6 +15,7 @@
         /* --- Font --- */
         @font-face {
             font-family: 'HuWenMingChao';
+            /* Assuming the paths are correct relative to the HTML file's location */
             src: url('./data/fonts/HuWenMingChaoTi.woff2') format('woff2'),
                  url('./data/fonts/HuWenMingChaoTi.woff') format('woff');
             font-weight: normal;
@@ -57,140 +54,46 @@
         }
 
         /* --- Base & Body Styles --- */
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        html {
-            scroll-behavior: smooth;
-            /* Ensure html takes full height for body % height to work if needed */
-             /* height: 100%; */ /* Usually not needed with vh units */
-        }
-
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
         body {
             font-family: var(--font-primary);
             line-height: 1.7;
             color: var(--ghibli-text);
-            margin: 0; /* Reset default margin */
-
-            /* --- Faded Background Image --- */
-            /* Fallback color (solid) */
+            margin: 0;
             background-color: var(--ghibli-bg);
-
-            /* Layer 1: Semi-transparent overlay using the background color */
-            /* Adjust the alpha value (0.85) to control faintness. */
-            /* Higher value (e.g., 0.9) = fainter image. */
-            /* Lower value (e.g., 0.7) = clearer image. */
-            /* Using RGB of #fbfaf5 (your --ghibli-bg) */
+            /* Faded background image - path assumed correct */
             background-image:
                 linear-gradient(rgba(251, 250, 245, 0.85), rgba(251, 250, 245, 0.9)),
-                /* Layer 2: Your actual image */
-                /* !! REPLACE './data/img/5.jpeg' with your actual image path !! */
                 url('./data/img/5.jpeg');
-
-            /* Properties applied to the background layers */
-            background-size: cover, cover; /* Apply cover to both layers */
-            background-position: center center, center center; /* Center both */
-            background-repeat: no-repeat, no-repeat; /* Don't repeat either */
-            background-attachment: fixed, fixed; /* Keep both fixed during scroll */
-
-            /* Ensure body takes at least viewport height */
+            background-size: cover, cover;
+            background-position: center center, center center;
+            background-repeat: no-repeat, no-repeat;
+            background-attachment: fixed, fixed;
             min-height: 100vh;
         }
 
         /* --- Layout Container --- */
-        .page-container {
-            display: flex;
-             /* Calculate height: 100% viewport height MINUS footer height */
-             height: calc(100vh - var(--footer-height));
-             width: 100%; /* Ensure it takes full width */
-             position: absolute; /* Position relative to viewport for calc to work reliably */
-             top: 0;
-             left: 0;
-        }
+        .page-container { display: flex; height: calc(100vh - var(--footer-height)); width: 100%; position: absolute; top: 0; left: 0; }
+        .left-column, .right-column { height: 100%; overflow-y: auto; padding: 30px; -ms-overflow-style: none; scrollbar-width: none; }
+        .left-column::-webkit-scrollbar, .right-column::-webkit-scrollbar { display: none; }
+        .left-column { flex: 1; min-width: 300px; border-right: 1px solid var(--ghibli-border-color); }
+        .right-column { flex: 1.2; min-width: 320px; display: flex; flex-direction: column; background-color: rgba(255, 255, 255, 0.5); }
 
-        /* --- Columns (Scrollable) --- */
-        .left-column, .right-column {
-             /* Take full height of the calculated page-container height */
-             height: 100%;
-             overflow-y: auto; /* Enable vertical scroll *within* the column */
-             padding: 30px;
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
-        .left-column::-webkit-scrollbar,
-        .right-column::-webkit-scrollbar {
-            display: none;
-        }
+        /* --- Footer (Fixed) --- */
+        footer { position: fixed; bottom: 0; left: 0; width: 100%; background-color: var(--ghibli-footer-bg); border-top: 1px solid var(--ghibli-border-color); padding: 15px 0; height: var(--footer-height); text-align: center; font-size: 0.9em; color: var(--ghibli-text-light); z-index: 10; box-shadow: 0 -2px 5px rgba(93, 85, 81, 0.05); }
+        footer a { color: var(--ghibli-text-light); text-decoration: underline; }
+        footer a:hover { color: var(--ghibli-primary); }
 
-        .left-column {
-            flex: 1;
-            min-width: 300px;
-            border-right: 1px solid var(--ghibli-border-color);
-             /* Optional: Add a subtle background if needed over the main bg image */
-             /* background-color: rgba(251, 250, 245, 0.8); */
-        }
-
-        .right-column {
-            flex: 1.2;
-            min-width: 320px;
-            display: flex;
-            flex-direction: column;
-             /* Optional: Add a subtle background */
-             background-color: rgba(255, 255, 255, 0.5);
-        }
-
-        /* --- Footer (Fixed at Bottom) --- */
-        footer {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            background-color: var(--ghibli-footer-bg);
-            border-top: 1px solid var(--ghibli-border-color);
-            padding: 15px 0;
-            height: var(--footer-height); /* Use the variable */
-            text-align: center;
-            font-size: 0.9em;
-            color: var(--ghibli-text-light);
-            z-index: 10;
-            box-shadow: 0 -2px 5px rgba(93, 85, 81, 0.05);
-        }
-        footer a {
-             color: var(--ghibli-text-light); text-decoration: underline;
-         }
-         footer a:hover {
-              color: var(--ghibli-primary);
-          }
-
-        /* --- Responsive Design --- */
+        /* --- Responsive --- */
         @media (max-width: 800px) {
-            /* Allow normal page scroll on mobile */
-             body {
-                  min-height: 0; /* Reset min-height */
-                  padding-bottom: var(--footer-height); /* Still need space for fixed footer */
-              }
-            .page-container {
-                flex-direction: column;
-                height: auto; /* Allow natural height */
-                position: static; /* Reset positioning */
-            }
-            .left-column, .right-column {
-                height: auto;
-                overflow-y: visible; /* Disable independent scroll */
-                width: 100%;
-                flex: none;
-                border-right: none;
-                border-bottom: 1px solid var(--ghibli-border-color);
-                padding: 20px;
-            }
+            body { min-height: 0; padding-bottom: var(--footer-height); }
+            .page-container { flex-direction: column; height: auto; position: static; }
+            .left-column, .right-column { height: auto; overflow-y: visible; width: 100%; flex: none; border-right: none; border-bottom: 1px solid var(--ghibli-border-color); padding: 20px; }
             .right-column { border-bottom: none; }
-             /* Footer remains fixed via its own style */
         }
 
-        /* --- Other Styles (Unchanged from previous version) --- */
+        /* --- General Styles --- */
         h1, h2 { font-family: var(--font-primary); color: var(--ghibli-primary-dark); text-align: center; margin-bottom: 20px; font-weight: normal; }
         h1 { font-size: 2.2em; margin-bottom: 10px; }
         h2 { font-size: 1.6em; border-bottom: 1px solid var(--ghibli-border-color); padding-bottom: 10px; margin-top: 30px; }
@@ -198,7 +101,7 @@
         strong { color: var(--ghibli-error-text); font-weight: normal; }
         a { color: var(--ghibli-primary); text-decoration: none; }
         a:hover { text-decoration: underline; color: var(--ghibli-primary-dark); }
-        #status, #questions, #result, #upload-section, .feedback-box, .processing-hints, .error-message, .rank-badge-section { margin-top: 25px; padding: 20px; border: 1px solid var(--ghibli-border-color); border-radius: 12px; background-color: rgba(255, 255, 255, 0.7); /* Slightly increase opacity over image */ box-shadow: var(--ghibli-shadow); }
+        #status, #questions, #result, #upload-section, #chapter-selection, .feedback-box, .processing-hints, .error-message, .rank-badge-section { margin-top: 25px; padding: 20px; border: 1px solid var(--ghibli-border-color); border-radius: 12px; background-color: rgba(255, 255, 255, 0.7); box-shadow: var(--ghibli-shadow); }
         #status { text-align: center; font-style: italic; color: var(--ghibli-text-light); background-color: transparent; border: none; box-shadow: none; padding: 10px 0;}
         #questions { background-color: rgba(242, 239, 234, 0.6); }
         #upload-section { border-top: 2px dashed var(--ghibli-primary); margin-top: 30px; }
@@ -218,7 +121,7 @@
         .question-item:nth-child(4n+4) { background-color: var(--ghibli-q-4); border-color: darken(var(--ghibli-q-4), 3%); }
         .question-item p { margin: 0; }
         .question-text { display: block; margin-bottom: 5px; font-weight: normal; font-size: 1.1em; color: var(--ghibli-text); }
-        .question-details { font-size: 0.85em; color: var(--ghibli-text-light); margin-top: 8px; }
+        /* Removed question-details span as per Req 3 */
         .underline-blank { border-bottom: 1.5px dashed var(--ghibli-text-light); padding: 0 0.5em; color: var(--ghibli-text-light); display: inline-block; min-width: 5em; text-align: center; }
         #image-upload-label { display: block; margin-bottom: 10px; font-weight: bold; color: var(--ghibli-primary-dark); }
         input[type="file"] { font-family: var(--font-primary); color: var(--ghibli-text); padding: 5px; margin-bottom: 15px; }
@@ -227,7 +130,7 @@
         #image-preview-container { margin-top: 15px; text-align: center; }
         #image-preview { max-width: 90%; max-height: 350px; border: 1px solid var(--ghibli-border-color); border-radius: 8px; display: none; margin: 10px auto; box-shadow: var(--ghibli-shadow); }
         #compression-info { font-size: 0.9em; color: var(--ghibli-text-light); margin-top: 10px; text-align: center; min-height: 1.2em; }
-        #result { background-color: rgba(255, 255, 255, 0.75); } /* Slightly more opaque results box */
+        #result { background-color: rgba(255, 255, 255, 0.75); }
         .result-item { margin-bottom: 15px; padding: 15px; border: 1px solid var(--ghibli-border-color); border-radius: 8px; border-left-width: 6px; border-left-style: solid; transition: border-color 0.3s ease; background-color: var(--ghibli-bg); }
         .result-item p { margin: 8px 0; }
         .result-item strong { color: var(--ghibli-primary-dark); font-weight: bold; }
@@ -257,6 +160,48 @@
         .badge-display span { font-size: 1.6em; vertical-align: middle; margin: 0 5px; color: var(--ghibli-primary); }
         .rank-display { margin-top: 5px; font-size: 0.95em; color: var(--ghibli-text-light); }
 
+        /* --- Styles for Chapter Selection --- (Requirement 9) */
+        #chapter-selection { background-color: rgba(242, 239, 234, 0.7); padding: 25px; }
+        #chapter-selection h2 { font-size: 1.4em; color: var(--ghibli-primary-dark); margin-bottom: 15px; border: none; text-align: left;}
+        .chapter-list { list-style: none; padding: 0; margin: 0; }
+        .chapter-list-item button {
+            display: block; /* Make button take full width */
+            width: 100%;
+            text-align: left;
+            padding: 12px 18px;
+            margin-bottom: 8px; /* Space between items */
+            font-family: var(--font-primary);
+            font-size: 1.05em;
+            color: var(--ghibli-text);
+            background-color: var(--ghibli-bg); /* Use light bg */
+            border: 1px solid var(--ghibli-border-color);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: var(--ghibli-shadow);
+        }
+        .chapter-list-item button:hover {
+            background-color: var(--ghibli-accent1);
+            border-color: var(--ghibli-primary);
+            box-shadow: 0 4px 8px rgba(93, 85, 81, 0.12);
+        }
+        .chapter-list-item button .chapter-order {
+             display: inline-block;
+             min-width: 2em; /* Ensure alignment */
+             margin-right: 10px;
+             color: var(--ghibli-text-light);
+             font-weight: bold;
+         }
+         .chapter-list-item button .chapter-title {
+             font-weight: normal;
+             color: var(--ghibli-text);
+         }
+         .chapter-list-item button:disabled {
+             opacity: 0.6;
+             cursor: not-allowed;
+             background-color: var(--ghibli-accent1);
+         }
+
     </style>
     <!-- External Libraries -->
     <script src="https://cdn.bootcdn.net/ajax/libs/browser-image-compression/2.0.2/browser-image-compression.js"></script>
@@ -271,14 +216,17 @@
              <h1>AI 默寫</h1>
              <p style="text-align: center; color: var(--ghibli-primary-dark);"><strong>高考默寫8分，放條狗都能拿滿！何況是你我！</strong></p>
              <p style="text-align: center; color: var(--ghibli-error-text); font-weight: bold;">
-                 4道題，按順序分四行，拍照上傳。確保字跡清晰！
+                 按順序分行書寫答案，拍照上傳。確保字跡清晰！
              </p>
              <div class="button-group">
-                 <button id="get-question-btn">開始挑戰</button>
+                 <!-- (Requirement 4) Updated button text and added new button -->
+                 <button id="gaokao-challenge-btn">挑戰高考</button>
+                 <button id="select-chapter-btn">選篇挑戰</button>
              </div>
-             <div id="status">狀態：等待挑戰...</div>
+             <div id="status">狀態：選擇挑戰模式...</div>
              <div id="questions" style="display: none;">
-                 <h2>筆墨伺候 (共 8 分)</h2>
+                 <!-- Title will be updated dynamically -->
+                 <h2 id="questions-title">筆墨伺候 (共 8 分)</h2>
                  <p style="text-align: center; color: var(--ghibli-text-light); font-style: italic;">
                      <strong style="color: var(--ghibli-error-text);">‼️：請勿書寫題號，答案中**不要加標點符號**。‼️ </strong>
                  </p>
@@ -294,17 +242,18 @@
                  </div>
                   <button id="submit-btn" disabled>提交墨寶</button>
              </div>
-             <!-- Add dummy content to test left scroll -->
-             <!-- <div style="height:1200px; background:rgba(255,0,0,0.1);">Scroll Test Left</div> -->
         </div><!-- End Left Column -->
 
-        <!-- Right Column: Results -->
+        <!-- Right Column: Results / Chapter Selection -->
         <div class="right-column">
+            <!-- Container for Chapter Selection (Requirement 6) -->
+            <div id="chapter-selection" style="display: none;">
+                 <!-- Chapter list will be injected here by JS -->
+            </div>
+            <!-- Container for Results (used by both modes) -->
             <div id="result" style="display: none;">
                 <!-- Result content injected here -->
             </div>
-             <!-- Add dummy content to test right scroll -->
-             <!-- <div style="height:1200px; background:rgba(0,0,255,0.1);">Scroll Test Right</div> -->
         </div><!-- End Right Column -->
 
     </div> <!-- End Page Container -->
@@ -316,62 +265,79 @@
 
     <!-- Main Application Logic -->
     <script>
-        // --- Javascript unchanged from previous version ---
-        // (Paste the entire <script> block from the previous response here)
         // --- DOM Elements ---
         const statusDiv = document.getElementById('status');
         const questionsDiv = document.getElementById('questions');
+        const questionsTitle = document.getElementById('questions-title'); // Get questions title H2
         const questionListDiv = document.getElementById('question-list');
         const uploadSection = document.getElementById('upload-section');
         const imageUploadInput = document.getElementById('image-upload');
         const imagePreview = document.getElementById('image-preview');
         const compressionInfo = document.getElementById('compression-info');
         const resultDiv = document.getElementById('result');
-        const getQuestionBtn = document.getElementById('get-question-btn');
+        const chapterSelectionDiv = document.getElementById('chapter-selection'); // (Req 6) Get chapter selection div
+        const gaokaoChallengeBtn = document.getElementById('gaokao-challenge-btn'); // (Req 4) Renamed button
+        const selectChapterBtn = document.getElementById('select-chapter-btn'); // (Req 4) New button
         const submitBtn = document.getElementById('submit-btn');
-        const rightColumn = document.querySelector('.right-column'); // Cache right column
+        const rightColumn = document.querySelector('.right-column');
+        const leftColumn = document.querySelector('.left-column'); // Cache left column too
 
         // --- State Variables ---
-        let currentQuestions = [];
-        let currentSetId = null;
+        let currentQuestions = []; // Holds questions for the *current* challenge (either GaoKao or Chapter)
+        let currentChallengeType = null; // 'gaokao' or 'chapter'
+        let currentChallengeIdentifier = null; // Holds setId for 'gaokao', chapterOrder for 'chapter'
+        let currentChapterTitle = ''; // Store chapter title for display
         let compressedImageBlob = null;
         let isSubmitting = false;
+        let isLoading = false; // General loading state flag
 
         // --- Utility Functions ---
-        function setLoadingState(button, isLoading, defaultText = '操作') {
+        function setLoadingState(button, loading, defaultText = '操作') {
              if (!button) return;
-             button.disabled = isLoading;
-             button.textContent = isLoading ? '稍候...' : defaultText;
-             if (isLoading) {
-                button.classList.add('loading-active');
-             } else {
-                button.classList.remove('loading-active');
-             }
+             button.disabled = loading;
+             button.textContent = loading ? '稍候...' : defaultText;
+             button.classList.toggle('loading-active', loading);
         }
 
+        // (Req 8) Extended resetUI
         function resetUI() {
-            statusDiv.textContent = '狀態：等待挑戰...';
+            statusDiv.textContent = '狀態：選擇挑戰模式...';
+            statusDiv.style.display = 'block';
             resultDiv.style.display = 'none';
             resultDiv.innerHTML = '';
             resultDiv.classList.remove('full-marks-celebration');
+            chapterSelectionDiv.style.display = 'none'; // Hide chapter selection
+            chapterSelectionDiv.innerHTML = '';      // Clear chapter selection content
             questionsDiv.style.display = 'none';
             uploadSection.style.display = 'none';
             questionListDiv.innerHTML = '';
+            questionsTitle.textContent = '筆墨伺候 (共 8 分)'; // Reset title
+
             currentQuestions = [];
-            currentSetId = null;
+            currentChallengeType = null;
+            currentChallengeIdentifier = null;
+            currentChapterTitle = '';
             compressedImageBlob = null;
+            isSubmitting = false;
+            isLoading = false; // Reset general loading flag
+
             imagePreview.style.display = 'none';
             imagePreview.src = '#';
-            imageUploadInput.value = ''; // Clear file input
+            imageUploadInput.value = '';
             compressionInfo.textContent = '';
-             // Clear errors in compression info
-             const compInfoError = compressionInfo.querySelector('.error-message');
-             if (compInfoError) compInfoError.remove();
+            const compInfoError = compressionInfo.querySelector('.error-message');
+            if (compInfoError) compInfoError.remove();
 
             submitBtn.disabled = true;
-            isSubmitting = false;
-            setLoadingState(getQuestionBtn, false, '開始挑戰');
+
+            // Reset button states
+            setLoadingState(gaokaoChallengeBtn, false, '挑戰高考');
+            setLoadingState(selectChapterBtn, false, '選篇挑戰');
             setLoadingState(submitBtn, false, '提交墨寶');
+
+            // Ensure other buttons are re-enabled if they were disabled by a loading state
+            gaokaoChallengeBtn.disabled = false;
+            selectChapterBtn.disabled = false;
         }
 
         function displayError(message, container = statusDiv) {
@@ -379,51 +345,78 @@
              const safeMessage = escapeHtml(message);
              if(container) {
                  let displayMessage = safeMessage;
-                 // More specific user-friendly messages
-                 if (safeMessage.toLowerCase().includes("overloaded") || safeMessage.toLowerCase().includes("try again later") || safeMessage.includes("503") || safeMessage.includes("429")) {
-                     displayMessage = `AI 服務暫時忙碌或請求過多，請稍後再試一次提交。<br><small>(${safeMessage})</small>`;
-                 } else if (safeMessage.includes("AI API Error") || safeMessage.includes("Failed to communicate")) {
-                     displayMessage = `與 AI 服務通信時發生錯誤，請檢查網絡或稍後再試。<br><small>(${safeMessage})</small>`;
-                 } else if (safeMessage.includes("圖片壓縮處理失敗")) {
-                      displayMessage = safeMessage; // Keep compression error as is
-                 } else if (safeMessage.includes("未能從後端獲取有效")) {
-                     displayMessage = `無法獲取題目，請刷新頁面或稍後再試。<br><small>(${safeMessage})</small>`;
-                 } else if (safeMessage.includes("無法獲取題組信息")) {
-                     displayMessage = `無法加載當前挑戰信息，可能已過期，請重新開始挑戰。<br><small>(${safeMessage})</small>`;
-                 }
+                 // Add specific messages if needed, similar to before
+                 if (safeMessage.toLowerCase().includes("overloaded") || safeMessage.includes("503") || safeMessage.includes("429")) displayMessage = `AI 服務暫時忙碌，請稍後再試。<br><small>(${safeMessage})</small>`;
+                 else if (safeMessage.includes("AI API Error")) displayMessage = `與 AI 服務通信時發生錯誤，請稍後再試。<br><small>(${safeMessage})</small>`;
+                 else if (safeMessage.includes("無法獲取")) displayMessage = `無法加載所需信息，請刷新或稍後再試。<br><small>(${safeMessage})</small>`;
 
-                container.innerHTML = `<div class="error-message">錯誤：${displayMessage}</div>`;
-                container.style.display = 'block';
-                // Scroll the relevant column into view if possible
-                if (container === resultDiv && rightColumn) {
-                    rightColumn.scrollTo({ top: 0, behavior: 'smooth' });
-                } else if (container !== statusDiv && typeof container.scrollIntoView === 'function') { // Check if scrollIntoView exists
-                     container.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                 container.innerHTML = `<div class="error-message">錯誤：${displayMessage}</div>`;
+                 container.style.display = 'block';
+
+                 // Scroll the relevant column into view
+                 if (container === resultDiv || container === chapterSelectionDiv) {
+                    if (rightColumn) rightColumn.scrollTo({ top: 0, behavior: 'smooth' });
+                 } else if (container === statusDiv || container === questionsDiv || container === uploadSection) {
+                    if (leftColumn) leftColumn.scrollTo({ top: 0, behavior: 'smooth' });
+                 } else if (typeof container.scrollIntoView === 'function') {
+                    container.scrollIntoView({ behavior: 'smooth', block: 'center' });
                  }
              }
         }
 
         function escapeHtml(unsafe) {
             if (typeof unsafe !== 'string') { return String(unsafe); }
-            return unsafe
-                 .replace(/&/g, "&")
-                 .replace(/</g, "<")
-                 .replace(/>/g, ">")
-                 // << FINAL CORRECTION: Use single quotes for the replacement string literal >>
-                 .replace(/"/g, '"')
-                 // << END FINAL CORRECTION >>
-                 .replace(/'/g, "'"); // Ensure this line ends with a semicolon if it's the last in the chain for the return statement.
-         }
+            return unsafe.replace(/&/g, "&").replace(/</g, "<").replace(/>/g, ">").replace(/"/g, '"').replace(/'/g, "'");
+        }
+
+        // Function to display questions (used by both modes)
+        function displayQuestions(questions, title = '筆墨伺候 (共 8 分)') {
+            currentQuestions = questions; // Store questions locally
+            questionsTitle.textContent = title; // Update the title
+            questionListDiv.innerHTML = ''; // Clear previous questions
+
+            if (!questions || questions.length === 0) {
+                questionListDiv.innerHTML = '<p>未能加載題目。</p>';
+                questionsDiv.style.display = 'block';
+                uploadSection.style.display = 'none';
+                return;
+            }
+
+            questions.forEach((q) => {
+                const item = document.createElement('div');
+                item.classList.add('question-item');
+                const questionText = q.question || '';
+                // Format blanks, remove source/details (Req 3)
+                const formattedQuestion = escapeHtml(questionText).replace(/_{2,}/g, '<span class="underline-blank"> </span>');
+                item.innerHTML = `<p><span class="question-text">${formattedQuestion}</span></p>`; // No details span
+                questionListDiv.appendChild(item);
+            });
+
+            questionsDiv.style.display = 'block';
+            uploadSection.style.display = 'block'; // Show upload section
+            submitBtn.disabled = !compressedImageBlob; // Enable submit only if image already selected+compressed
+
+            // Scroll left column to top
+            if (leftColumn) leftColumn.scrollTo({ top: 0, behavior: 'smooth' });
+            else questionsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
 
         // --- Event Listeners ---
-        getQuestionBtn.addEventListener('click', async () => {
-            resetUI();
-            setLoadingState(getQuestionBtn, true, '正在出題');
-            statusDiv.textContent = '正在從雲端獲取新題組...';
+
+        // (Req 5) Listener for "挑戰高考" button
+        gaokaoChallengeBtn.addEventListener('click', async () => {
+            if (isLoading) return; // Prevent multiple clicks
+            isLoading = true;
+            resetUI(); // Full reset
+            setLoadingState(gaokaoChallengeBtn, true, '正在出題');
+            setLoadingState(selectChapterBtn, true); // Disable other button
+            statusDiv.textContent = '正在從雲端獲取高考挑戰題組...';
             statusDiv.style.display = 'block';
 
             try {
-                const response = await fetch('/api/start_set');
+                // Changed endpoint name
+                const response = await fetch('/api/start_gaokao_set');
                  if (!response.ok) {
                      let errorMsg = `HTTP 錯誤！狀態: ${response.status} ${response.statusText}`;
                      try { const errorData = await response.json(); errorMsg = errorData.error || errorMsg; } catch (e) {}
@@ -431,40 +424,152 @@
                  }
                 const setData = await response.json();
                 if (!setData || !setData.setId || !setData.questions || setData.questions.length === 0) {
-                    console.error('Invalid data from /api/start_set:', setData);
-                    throw new Error('未能從後端獲取有效的題組數據。');
+                    throw new Error('未能從後端獲取有效的“挑戰高考”題組數據。');
                 }
 
-                currentSetId = setData.setId;
-                currentQuestions = setData.questions;
-                statusDiv.textContent = `題組已就緒 (ID: ${currentSetId.substring(0, 6)}...)！請提筆作答...`;
-                questionsDiv.style.display = 'block';
-                uploadSection.style.display = 'block';
-                questionListDiv.innerHTML = '';
-                currentQuestions.forEach((q) => {
-                    const item = document.createElement('div');
-                    item.classList.add('question-item');
-                    const questionText = q.question || '';
-                    const formattedQuestion = escapeHtml(questionText).replace(/_{2,}/g, '<span class="underline-blank"> </span>');
-                    const sourceText = escapeHtml(q.source || "未知類型");
-                    const detailsString = `(類型: ${sourceText})`;
-                    item.innerHTML = `<p><span class="question-text">${formattedQuestion}</span><span class="question-details">${detailsString}</span></p>`;
-                    questionListDiv.appendChild(item);
-                });
-                // Scroll left column to top when new questions load
-                 const leftColumn = document.querySelector('.left-column');
-                 if (leftColumn) leftColumn.scrollTo({ top: 0, behavior: 'smooth' });
-                 else questionsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' }); // Fallback
+                currentChallengeType = 'gaokao';
+                currentChallengeIdentifier = setData.setId; // Store the setId
+                statusDiv.textContent = `高考挑戰題組已就緒 (ID: ${currentChallengeIdentifier.substring(0, 6)}...)！請提筆作答...`;
+
+                displayQuestions(setData.questions, `挑戰高考 (${setData.questions.length}題, 共 8 分)`);
 
             } catch (error) {
-                console.error('Error fetching questions:', error);
-                displayError(`獲取題目時遇到問題: ${error.message || '未知錯誤'}`);
-                resetUI();
+                console.error('Error fetching GaoKao questions:', error);
+                displayError(`獲取“挑戰高考”題目時遇到問題: ${error.message || '未知錯誤'}`);
+                resetUI(); // Reset fully on error
             } finally {
-                setLoadingState(getQuestionBtn, false, '開始挑戰');
+                isLoading = false;
+                // Reset loading states, keep buttons enabled
+                setLoadingState(gaokaoChallengeBtn, false, '挑戰高考');
+                setLoadingState(selectChapterBtn, false, '選篇挑戰');
+                gaokaoChallengeBtn.disabled = false;
+                selectChapterBtn.disabled = false;
             }
         });
 
+        // (Req 6, 8) Listener for "選篇挑戰" button
+        selectChapterBtn.addEventListener('click', async () => {
+            if (isLoading) return;
+            isLoading = true;
+            resetUI(); // Full reset before showing chapters
+            setLoadingState(selectChapterBtn, true, '加載篇目');
+            setLoadingState(gaokaoChallengeBtn, true); // Disable other button
+            statusDiv.textContent = '正在加載篇目列表...';
+            statusDiv.style.display = 'block';
+            // Clear main result area, ensure chapter selection is visible
+            resultDiv.style.display = 'none';
+            resultDiv.innerHTML = '';
+            chapterSelectionDiv.style.display = 'block';
+            chapterSelectionDiv.innerHTML = '<div class="loading">正在加載篇目...</div>';
+
+            // Scroll right column to top
+            if (rightColumn) rightColumn.scrollTo({ top: 0, behavior: 'smooth' });
+
+            try {
+                const response = await fetch('/api/get_chapters');
+                 if (!response.ok) {
+                    let errorMsg = `HTTP 錯誤！狀態: ${response.status} ${response.statusText}`;
+                    try { const errorData = await response.json(); errorMsg = errorData.error || errorMsg; } catch (e) {}
+                    throw new Error(errorMsg);
+                 }
+                const chapterData = await response.json();
+                if (!chapterData || !Array.isArray(chapterData.chapters)) {
+                    throw new Error('未能從後端獲取有效的篇目列表數據。');
+                }
+
+                // (Req 9) Display chapter list
+                statusDiv.textContent = '狀態：請選擇要挑戰的篇目';
+                chapterSelectionDiv.innerHTML = '<h2>選擇篇目開始挑戰</h2><ul class="chapter-list"></ul>';
+                const listElement = chapterSelectionDiv.querySelector('.chapter-list');
+
+                if (chapterData.chapters.length === 0) {
+                    listElement.innerHTML = '<li>未能加載到任何篇目。</li>';
+                } else {
+                    chapterData.chapters.forEach(chapter => {
+                        const listItem = document.createElement('li');
+                        listItem.classList.add('chapter-list-item');
+                        const button = document.createElement('button');
+                        button.dataset.order = chapter.order; // Store order in data attribute
+                        button.innerHTML = `<span class="chapter-order">${escapeHtml(chapter.order)}.</span> <span class="chapter-title">${escapeHtml(chapter.title)}</span>`;
+                        // Add click listener to each chapter button (Req 7 - part 1)
+                        button.addEventListener('click', handleChapterSelection);
+                        listItem.appendChild(button);
+                        listElement.appendChild(listItem);
+                    });
+                }
+            } catch (error) {
+                console.error('Error fetching chapters:', error);
+                displayError(`獲取篇目列表時遇到問題: ${error.message || '未知錯誤'}`, chapterSelectionDiv); // Display error in chapter section
+                statusDiv.textContent = '狀態：加載篇目列表失敗';
+            } finally {
+                 isLoading = false;
+                 // Reset loading states, keep buttons enabled
+                 setLoadingState(selectChapterBtn, false, '選篇挑戰');
+                 setLoadingState(gaokaoChallengeBtn, false, '挑戰高考');
+                 gaokaoChallengeBtn.disabled = false;
+                 selectChapterBtn.disabled = false;
+            }
+        });
+
+        // (Req 7 - part 2) Handler for clicking a chapter button
+        async function handleChapterSelection(event) {
+            if (isLoading) return;
+            const button = event.currentTarget;
+            const chapterOrder = button.dataset.order;
+            if (!chapterOrder) return;
+
+            isLoading = true;
+            resetUI(); // Reset UI before loading chapter questions
+            // Briefly disable all chapter buttons during load
+            document.querySelectorAll('.chapter-list-item button').forEach(btn => btn.disabled = true);
+            statusDiv.textContent = `正在加載篇目 ${chapterOrder} 的題目...`;
+            statusDiv.style.display = 'block';
+
+            try {
+                const response = await fetch(`/api/get_chapter_questions?order=${chapterOrder}`);
+                 if (!response.ok) {
+                    let errorMsg = `HTTP 錯誤！狀態: ${response.status} ${response.statusText}`;
+                    try { const errorData = await response.json(); errorMsg = errorData.error || errorMsg; } catch (e) {}
+                    throw new Error(errorMsg);
+                 }
+                const chapterQuestionsData = await response.json();
+                if (!chapterQuestionsData || !chapterQuestionsData.chapterOrder || !Array.isArray(chapterQuestionsData.questions)) {
+                     throw new Error('未能從後端獲取有效的篇目題目數據。');
+                 }
+
+                 currentChallengeType = 'chapter';
+                 currentChallengeIdentifier = chapterQuestionsData.chapterOrder; // Store chapter order
+                 currentChapterTitle = chapterQuestionsData.chapterTitle || `篇目 ${currentChallengeIdentifier}`;
+                 statusDiv.textContent = `篇目《${currentChapterTitle}》題目已就緒！請提筆作答...`;
+
+                 // Display the questions for the selected chapter
+                 const questionCount = chapterQuestionsData.questions.length;
+                 displayQuestions(chapterQuestionsData.questions, `《${currentChapterTitle}》 (${questionCount}題, 共 8 分)`); // Update title dynamically
+
+                 // Hide chapter selection, clear results
+                 chapterSelectionDiv.style.display = 'none';
+                 chapterSelectionDiv.innerHTML = '';
+                 resultDiv.style.display = 'none';
+                 resultDiv.innerHTML = '';
+
+            } catch (error) {
+                 console.error(`Error fetching questions for chapter ${chapterOrder}:`, error);
+                 displayError(`加載篇目 ${chapterOrder} 題目時遇到問題: ${error.message || '未知錯誤'}`);
+                 resetUI(); // Reset fully on error
+            } finally {
+                isLoading = false;
+                 // Re-enable buttons after loading attempt (regardless of success/failure)
+                 setLoadingState(gaokaoChallengeBtn, false, '挑戰高考');
+                 setLoadingState(selectChapterBtn, false, '選篇挑戰');
+                 gaokaoChallengeBtn.disabled = false;
+                 selectChapterBtn.disabled = false;
+                 // Also re-enable chapter buttons if they exist
+                 document.querySelectorAll('.chapter-list-item button').forEach(btn => btn.disabled = false);
+            }
+        }
+
+
+        // --- Image Upload and Compression (Same as before) ---
         imageUploadInput.addEventListener('change', async (event) => {
             const file = event.target.files[0];
             compressedImageBlob = null;
@@ -490,15 +595,14 @@
              }
 
             compressionInfo.textContent = '正在優化圖片大小...';
-            console.log(`原始圖片: ${file.name}, 大小: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
             const options = { maxSizeMB: 1.5, maxWidthOrHeight: 1920, useWebWorker: true, preserveExif: false };
 
             try { // Compress
                  if (typeof imageCompression !== 'function') throw new Error("Image compression library not loaded.");
                 compressedImageBlob = await imageCompression(file, options);
-                console.log(`壓縮後圖片大小: ${(compressedImageBlob.size / 1024 / 1024).toFixed(2)} MB`);
                 compressionInfo.textContent = `圖片已就緒 (大小: ${(compressedImageBlob.size / 1024 / 1024).toFixed(2)} MB)`;
-                submitBtn.disabled = false;
+                // Enable submit button ONLY if a challenge is active
+                 submitBtn.disabled = !currentChallengeType;
             } catch (error) {
                 console.error('圖片壓縮失敗:', error);
                 displayError(`圖片壓縮處理失敗: ${error.message || '未知錯誤'}. 請嘗試其他圖片或刷新頁面。`, compressionInfo);
@@ -506,24 +610,40 @@
             }
         });
 
+        // --- Submit Button Listener (Handles both modes) ---
         submitBtn.addEventListener('click', async () => {
-            if (isSubmitting || !compressedImageBlob || !currentSetId) {
-                if (!compressedImageBlob) alert('錯誤：圖片尚未準備好。');
-                if (!currentSetId) alert('錯誤：缺少題組信息。');
-                return;
-            }
+             if (isSubmitting || !compressedImageBlob || !currentChallengeType || !currentChallengeIdentifier) {
+                 if (!compressedImageBlob) alert('錯誤：圖片尚未準備好。');
+                 if (!currentChallengeType) alert('錯誤：未選擇挑戰模式或未加載題目。');
+                 return;
+             }
 
             isSubmitting = true;
             setLoadingState(submitBtn, true, '正在提交評閱');
+            // Disable other main buttons during submission
+            gaokaoChallengeBtn.disabled = true;
+            selectChapterBtn.disabled = true;
+
+            // Clear previous results/chapter list and show loading in result area
             resultDiv.innerHTML = '<div class="loading">正在上傳墨寶並恭候 AI 大師評閱，請稍安勿躁...</div>';
             resultDiv.style.display = 'block';
+            chapterSelectionDiv.style.display = 'none'; // Ensure chapter list is hidden
+            chapterSelectionDiv.innerHTML = '';
+
             if (rightColumn) rightColumn.scrollTo({ top: 0, behavior: 'smooth' });
 
             const formData = new FormData();
-            formData.append('setId', currentSetId);
+            // Append the correct identifier based on challenge type
+            if (currentChallengeType === 'gaokao') {
+                formData.append('setId', currentChallengeIdentifier);
+            } else if (currentChallengeType === 'chapter') {
+                formData.append('chapterOrder', currentChallengeIdentifier);
+            }
+
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
             const originalExtension = imageUploadInput.files[0]?.name.split('.').pop() || 'png';
-            const filename = `moxie_${currentSetId.substring(0, 6)}_${timestamp}.${originalExtension}`;
+            // Include type in filename
+            const filename = `moxie_${currentChallengeType}_${currentChallengeIdentifier}_${timestamp}.${originalExtension}`;
             formData.append('handwritingImage', compressedImageBlob, filename);
 
             try {
@@ -537,13 +657,14 @@
                 console.log("Result Data Received:", resultData);
 
                 // --- Render Results ---
-                let resultHTML = `<h2>評閱結果 (總分: ${resultData.totalScore ?? 'N/A'} / 8)</h2>`;
+                // Use scoreTarget from response if available, default to 8
+                const scoreTarget = resultData.scoreTarget !== undefined ? resultData.scoreTarget : 8;
+                let resultHTML = `<h2>評閱結果 (${currentChallengeType === 'chapter' ? `《${escapeHtml(currentChapterTitle)}》 ` : ''}總分: ${resultData.totalScore ?? 'N/A'} / ${scoreTarget})</h2>`;
                 let hintsHTML = '';
+
                 if (resultData.ocrIssue) {
                     let ocrDisplayError = escapeHtml(resultData.ocrIssue);
-                     if (ocrDisplayError.toLowerCase().includes("overloaded") || ocrDisplayError.includes("503") || ocrDisplayError.includes("429")) {
-                         ocrDisplayError = `圖片識別服務暫時忙碌，部分結果可能不準確。<br><small>(${escapeHtml(resultData.ocrIssue)})</small>`;
-                     }
+                     if (ocrDisplayError.toLowerCase().includes("overloaded") || ocrDisplayError.includes("503") || ocrDisplayError.includes("429")) ocrDisplayError = `圖片識別服務暫時忙碌，部分結果可能不準確。<br><small>(${escapeHtml(resultData.ocrIssue)})</small>`;
                     hintsHTML += `<p>圖片識別提示：${ocrDisplayError}</p>`;
                 }
                 if (hintsHTML) resultHTML += `<div class="processing-hints">${hintsHTML}</div>`;
@@ -551,11 +672,13 @@
                 if (resultData.results && Array.isArray(resultData.results)) {
                     resultData.results.forEach((res, index) => {
                         const isCorrect = res.isCorrect;
-                        const score = res.score !== undefined ? res.score.toFixed(1) : 'N/A';
+                        const score = res.score !== undefined ? res.score.toFixed(1) : 'N/A'; // Score per question
                         const recognized = escapeHtml(res.recognizedText || '[未能識別]');
                         const correct = escapeHtml(res.correctAnswer || '[標準答案缺失]');
                         let borderColor = 'var(--ghibli-border-color)'; let recognizedClass = ''; let tickOrCross = '';
-                        let scoreDisplay = `(得分: ${score})`;
+                        // Score display per question might be less relevant if total score is prominent
+                        // let scoreDisplay = `(得分: ${score})`;
+                        let scoreDisplay = ''; // Keep it clean unless needed
 
                         if (!res.success || recognized.startsWith('[')) {
                              borderColor = 'var(--ghibli-warning-border)'; recognizedClass = 'unrecognized-text';
@@ -575,50 +698,67 @@
                     });
                 } else {
                     resultHTML += `<div class="error-message">無法解析詳細評分結果。</div>`;
-                    console.warn("Missing or invalid 'results' array:", resultData);
                 }
 
-                 let rankBadgeHTML = '';
+                // Add rank/badge section only if it exists in response (i.e., for GaoKao challenge)
+                let rankBadgeHTML = '';
                  if (resultData.badge || resultData.rank !== undefined) {
                      rankBadgeHTML += `<div class="rank-badge-section">`;
                      if (resultData.badge) rankBadgeHTML += `<div class="badge-display">本次獲得徽章: <span>${escapeHtml(resultData.badge)}</span></div>`;
                      if (resultData.rank !== undefined) rankBadgeHTML += `<div class="rank-display">當前段位: ${escapeHtml(convertToChineseRankFrontend(resultData.rank))}階</div>`;
                      rankBadgeHTML += `</div>`;
                  }
-                 resultHTML += rankBadgeHTML;
+                 resultHTML += rankBadgeHTML; // Add rank/badge if available
+
+                 // Display results
                  resultDiv.innerHTML = resultHTML;
 
+                 // Add feedback box
                  const feedbackContainer = document.createElement('div');
+                 const isFullMarks = (resultData.totalScore === scoreTarget);
                  if (resultData.feedback) {
-                     const isFullMarks = (resultData.totalScore === 8);
                      feedbackContainer.className = `feedback-box ${isFullMarks ? 'feedback-success' : 'feedback-fail'}`;
                      const pre = document.createElement('pre');
-                     pre.textContent = resultData.feedback; // Backend includes warnings now
+                     pre.textContent = resultData.feedback; // Backend includes warnings
                      feedbackContainer.appendChild(pre);
                      resultDiv.classList.toggle('full-marks-celebration', isFullMarks);
-                 } else { // Basic fallback
-                    const isFullMarks = (resultData.totalScore === 8);
+                 } else {
                     feedbackContainer.className = `feedback-box ${isFullMarks ? 'feedback-success' : 'feedback-fail'}`;
-                    feedbackContainer.innerHTML = `<p>${escapeHtml(isFullMarks ? "滿分！表現不錯！" : `總分 ${resultData.totalScore ?? 'N/A'}。未達滿分，還需努力。`)}</p>`;
+                    feedbackContainer.innerHTML = `<p>${escapeHtml(isFullMarks ? "滿分！表現不錯！" : `總分 ${resultData.totalScore ?? 'N/A'} / ${scoreTarget}。繼續努力！`)}</p>`;
                     resultDiv.classList.remove('full-marks-celebration');
                  }
-                 resultDiv.appendChild(feedbackContainer);
+                 resultDiv.appendChild(feedbackContainer); // Append feedback to results
 
+                 // Scroll results into view
                  if (rightColumn) setTimeout(() => { rightColumn.scrollTo({ top: 0, behavior: 'smooth' }); }, 100);
+
+                 // Submission successful, reset relevant parts of left column for next action
+                 questionsDiv.style.display = 'none';
+                 uploadSection.style.display = 'none';
+                 questionListDiv.innerHTML = '';
+                 imageUploadInput.value = '';
+                 imagePreview.style.display = 'none';
+                 imagePreview.src = '#';
+                 compressionInfo.textContent = '';
+                 compressedImageBlob = null;
+
 
             } catch (error) {
                  console.error('Submit error:', error);
-                 displayError(`提交或處理失敗: ${error.message || '未知客戶端錯誤'}`, resultDiv);
+                 displayError(`提交或處理失敗: ${error.message || '未知客戶端錯誤'}`, resultDiv); // Display error in result area
             } finally {
                 isSubmitting = false;
                 setLoadingState(submitBtn, false, '提交墨寶');
+                // Re-enable main challenge buttons after submission attempt
+                gaokaoChallengeBtn.disabled = false;
+                selectChapterBtn.disabled = false;
             }
         });
 
         // --- Initial Setup ---
-        resetUI();
+        resetUI(); // Start in the initial state
 
-        // --- Frontend Helper function for Chinese Rank ---
+        // --- Frontend Helper function for Chinese Rank (Same as before) ---
         function convertToChineseRankFrontend(rank) {
             rank = Number(rank);
             if (isNaN(rank) || rank < 0) return "未知"; if (rank === 0) return "初窺";
