@@ -7,8 +7,8 @@ import poemsDataRaw from '../../data/poems.json'; // Changed source
 // --- Constants ---
 const KV_EXPIRATION_TTL_SECONDS = 3600; // 1 hour
 // ** Using specified models **
-const GEMINI_VISION_MODEL = "gemini-2.0-flash-thinking-exp-01-21";
-const GEMINI_TEXT_MODEL = "gemini-2.0-flash-thinking-exp-01-21";
+const GEMINI_VISION_MODEL = "gemini-2.5-flash-preview-04-17";
+const GEMINI_TEXT_MODEL = "gemini-2.5-flash-preview-04-17";
 const GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/";
 const MAX_QUESTIONS_PER_GAOKAO_SET = 4; // Target number of questions for "挑戰高考"
 const MAX_FEEDBACK_TOKENS = 3000;
