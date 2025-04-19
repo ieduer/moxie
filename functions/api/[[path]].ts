@@ -567,7 +567,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             let splitAnswers: string[] = [];
 
             // Dynamically create the prompt based on expected question count
-            const ocrPromptText = `这是一张包含${expectedQuestionCount}个手写简体中文答案的图片，按从上到下的顺序排列。请准确识别每个答案，并只用换行符（\\n）分隔返回${expectedQuestionCount}个结果。不要添加任何其他文字、解释、编号或格式。如果某个答案无法识别，请在那一行输出 "[無法識別]"。`;
+            const ocrPromptText = `这是一张包含${expectedQuestionCount}个手写简体中文答案的图片，按从上到下的顺序排列。请准确识别每个答案，并只用换行符（\\n）分隔返回${expectedQuestionCount}个结果。注意：圖片是學生提交的默寫考試內容，識別過程中務必保持中文字形原貌，絕對不要修正或添加任何其他文字、解释、编号或格式。如果筆畫不清晰要直接視為錯誤答案。如果字形有錯誤直接視為錯誤答案。識別過程中絕對不要做語意分析，審閱預期中要保持學生有很大概率會寫錯的警惕心。如果某个答案无法识别，请在那一行输出 "[無法識別]"。`;
             console.log(`Using OCR prompt for ${expectedQuestionCount} answers.`);
 
             const ocrContents: GeminiContent[] = [{
