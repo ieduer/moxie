@@ -132,7 +132,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 }
 
 function generateUniqueKey(prefix = 'answer', extension = '.png'): string {
-     return `${prefix}-${Date.now()}-${crypto.randomUUID()}${extension}`;
+    return `${prefix}-${Date.now()}-${crypto.randomUUID()}${extension}`;
 }
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -161,29 +161,29 @@ async function callGeminiAPI(apiKey: string, model: string, contents: GeminiCont
             let errorBodyText: string | null = null;
 
             try {
-                 // --- Correction: Use original 'response' for JSON attempt ---
-                 responseData = await response.json() as GeminiApiResponse;
+                // --- Correction: Use original 'response' for JSON attempt ---
+                responseData = await response.json() as GeminiApiResponse;
 
-                 if (responseData?.error) {
-                     console.error(`Gemini API Error in JSON response body:`, responseData.error);
-                     const errorDetail = responseData.error;
-                     throw new Error(`AI API Error ${errorDetail.code} (${errorDetail.status}): ${errorDetail.message}`);
-                 }
+                if (responseData?.error) {
+                    console.error(`Gemini API Error in JSON response body:`, responseData.error);
+                    const errorDetail = responseData.error;
+                    throw new Error(`AI API Error ${errorDetail.code} (${errorDetail.status}): ${errorDetail.message}`);
+                }
             } catch (jsonError: any) {
                 // --- Correction: Use 'clonedResponse' to read text if JSON failed ---
                 console.warn("Gemini API response was not valid JSON or JSON error parsing failed. Reading as text.", jsonError.message);
                 try {
-                     errorBodyText = await clonedResponse.text(); // Use the clone
-                     console.error(`Gemini API Error Response Body (Text):`, errorBodyText);
-                 } catch (textError: any) {
-                     console.error("Failed to read Gemini API response body as text:", textError);
-                     errorBodyText = "[Failed to read error body]";
-                 }
+                    errorBodyText = await clonedResponse.text(); // Use the clone
+                    console.error(`Gemini API Error Response Body (Text):`, errorBodyText);
+                } catch (textError: any) {
+                    console.error("Failed to read Gemini API response body as text:", textError);
+                    errorBodyText = "[Failed to read error body]";
+                }
 
                 // If the original response status was not ok, throw based on status
                 // --- Correction: Check outer 'response' status ---
                 if (!response.ok) {
-                     throw new Error(`AI API Error (${response.status}): ${response.statusText}. Body: ${errorBodyText}`);
+                    throw new Error(`AI API Error (${response.status}): ${response.statusText}. Body: ${errorBodyText}`);
                 }
                 console.error("Gemini API returned ok status but invalid JSON response:", errorBodyText);
                 throw new Error("AI API returned unexpected response format (non-JSON or malformed JSON).");
@@ -202,7 +202,7 @@ async function callGeminiAPI(apiKey: string, model: string, contents: GeminiCont
             // If response was not OK, re-throw (should have been caught above, but defense in depth)
             // --- Correction: Check outer 'response' status ---
             if (!response.ok) {
-                 throw new Error(`AI API Error (${response.status}): ${response.statusText}. Body: ${errorBodyText ?? JSON.stringify(responseData)}`);
+                throw new Error(`AI API Error (${response.status}): ${response.statusText}. Body: ${errorBodyText ?? JSON.stringify(responseData)}`);
             }
 
             // Fallback case (should be rare)
@@ -252,11 +252,11 @@ function isValidPoemsData(data: any): data is RawPoemEntry[] {
     const sample = data[0];
     // Check for core fields and at least one question pair
     const isValid = typeof sample?.title === 'string' &&
-                    typeof sample?.category === 'string' &&
-                    typeof sample?.order === 'number' &&
-                    Array.isArray(sample?.paragraphs) &&
-                    typeof sample?.question1 === 'string' && // Check for at least the first question
-                    typeof sample?.reference_answer1 === 'string';
+        typeof sample?.category === 'string' &&
+        typeof sample?.order === 'number' &&
+        Array.isArray(sample?.paragraphs) &&
+        typeof sample?.question1 === 'string' && // Check for at least the first question
+        typeof sample?.reference_answer1 === 'string';
 
     if (!isValid) {
         const errorMessage = "First item in data array is invalid or missing required fields (title, category, order, paragraphs, question1, reference_answer1). Structure is incorrect.";
@@ -319,8 +319,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     console.log(`[${new Date().toISOString()}] Request: ${request.method} /api/${apiPath}${url.search}`);
 
     if (!env.IMAGES_BUCKET || !env.GEMINI_API_KEY || !env.SESSION_KV) {
-         console.error("FATAL: Server configuration error: Missing required Cloudflare bindings (R2, KV) or secrets (GEMINI_API_KEY).");
-         return new Response(JSON.stringify({ error: "Server configuration error. Please contact administrator." }), { status: 500, headers: baseHeaders });
+        console.error("FATAL: Server configuration error: Missing required Cloudflare bindings (R2, KV) or secrets (GEMINI_API_KEY).");
+        return new Response(JSON.stringify({ error: "Server configuration error. Please contact administrator." }), { status: 500, headers: baseHeaders });
     }
 
     // --- **DATA VALIDATION & PROCESSING (ONCE)** --- (Requirement 2)
@@ -395,19 +395,19 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
             console.log(`Selected ${generatedQuestions.length} questions from all poems for GaoKao setId: ${setId}`);
 
-             // Store the generated set in KV
-             const newSet: QuestionSet = { setId, questions: generatedQuestions, createdAt: Date.now() };
-             try {
-                 await env.SESSION_KV.put(setId, JSON.stringify(newSet), { expirationTtl: KV_EXPIRATION_TTL_SECONDS });
-                 console.log(`Stored new GaoKao question set in KV with setId: ${setId} (${generatedQuestions.length} questions)`);
-             } catch (kvError: any) {
-                 console.error(`KV put error for GaoKao setId ${setId}:`, kvError);
-                 throw new Error(`無法保存生成的題組信息: ${kvError.message}`);
-             }
+            // Store the generated set in KV
+            const newSet: QuestionSet = { setId, questions: generatedQuestions, createdAt: Date.now() };
+            try {
+                await env.SESSION_KV.put(setId, JSON.stringify(newSet), { expirationTtl: KV_EXPIRATION_TTL_SECONDS });
+                console.log(`Stored new GaoKao question set in KV with setId: ${setId} (${generatedQuestions.length} questions)`);
+            } catch (kvError: any) {
+                console.error(`KV put error for GaoKao setId ${setId}:`, kvError);
+                throw new Error(`無法保存生成的題組信息: ${kvError.message}`);
+            }
 
-             // Prepare response for the frontend (without answers)
-             const questionsForFrontend = newSet.questions.map(({ answer, ...rest }: QuestionInfo) => rest);
-             return new Response(JSON.stringify({ setId: newSet.setId, questions: questionsForFrontend }), { headers: baseHeaders });
+            // Prepare response for the frontend (without answers)
+            const questionsForFrontend = newSet.questions.map(({ answer, ...rest }: QuestionInfo) => rest);
+            return new Response(JSON.stringify({ setId: newSet.setId, questions: questionsForFrontend }), { headers: baseHeaders });
 
         } // End /api/start_gaokao_set
 
@@ -425,11 +425,11 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         if (apiPath === 'get_chapter_questions' && request.method === 'GET') {
             console.log(`Processing /api/get_chapter_questions request for order: ${chapterOrderParam}`);
             if (!chapterOrderParam) {
-                 return new Response(JSON.stringify({ error: '請求無效：缺少篇目順序號 (order)。' }), { status: 400, headers: baseHeaders });
+                return new Response(JSON.stringify({ error: '請求無效：缺少篇目順序號 (order)。' }), { status: 400, headers: baseHeaders });
             }
             const order = parseInt(chapterOrderParam, 10);
             if (isNaN(order)) {
-                 return new Response(JSON.stringify({ error: '請求無效：篇目順序號 (order) 必須是數字。' }), { status: 400, headers: baseHeaders });
+                return new Response(JSON.stringify({ error: '請求無效：篇目順序號 (order) 必須是數字。' }), { status: 400, headers: baseHeaders });
             }
 
             const chapterEntry = processedPoemEntries.find(entry => entry.order === order);
@@ -481,8 +481,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 challengeIdentifier = chapterOrderValue;
                 console.log(`Submit request identified as Chapter challenge (chapterOrder: ${challengeIdentifier})`);
             } else {
-                 console.error("Invalid submit request: Missing or invalid setId or chapterOrder.", { setIdValue, chapterOrderValue });
-                 return new Response(JSON.stringify({ error: '請求無效：缺少有效的挑戰標識 (題組 ID 或篇目順序號)。' }), { status: 400, headers: baseHeaders });
+                console.error("Invalid submit request: Missing or invalid setId or chapterOrder.", { setIdValue, chapterOrderValue });
+                return new Response(JSON.stringify({ error: '請求無效：缺少有效的挑戰標識 (題組 ID 或篇目順序號)。' }), { status: 400, headers: baseHeaders });
             }
 
             // Validate imageValue (same as before)
@@ -507,7 +507,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                     console.error(`KV get error for GaoKao setId ${challengeIdentifier}:`, kvError);
                     return new Response(JSON.stringify({ error: "無法獲取“挑戰高考”題組信息，會話可能已過期或ID無效，請重新開始。" }), { status: 404, headers: baseHeaders });
                 }
-                if (!questionSet || !questionSet.questions || questionSet.questions.length === 0 ) {
+                if (!questionSet || !questionSet.questions || questionSet.questions.length === 0) {
                     console.error(`Invalid or missing/empty GaoKao question set data in KV for setId ${challengeIdentifier}`, questionSet);
                     return new Response(JSON.stringify({ error: "無效的“挑戰高考”題組信息，請重新開始。" }), { status: 400, headers: baseHeaders });
                 }
@@ -517,30 +517,30 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             }
             else if (challengeType === 'chapter') {
                 const order = parseInt(challengeIdentifier, 10);
-                 if (isNaN(order)) {
+                if (isNaN(order)) {
                     return new Response(JSON.stringify({ error: '請求無效：篇目順序號 (chapterOrder) 必須是數字。' }), { status: 400, headers: baseHeaders });
-                 }
+                }
                 const chapterEntry = processedPoemEntries.find(entry => entry.order === order);
-                 if (!chapterEntry) {
-                     return new Response(JSON.stringify({ error: `提交失敗：未找到順序號為 ${order} 的篇目數據。` }), { status: 404, headers: baseHeaders });
-                 }
-                 // Map chapter questions to QuestionInfo format, including answers
-                 questionsToScore = chapterEntry.questions.map((q, index) => ({
-                     id: `chapter-${chapterEntry.order}-q${index}`, // Use the predictable ID
-                     question: q.question,
-                     answer: q.answer, // Include the answer!
-                     sourceTitle: chapterEntry.title,
-                     sourceAuthor: chapterEntry.author,
-                     sourceCategory: chapterEntry.category,
-                     sourceOrder: chapterEntry.order
-                 }));
-                 expectedQuestionCount = questionsToScore.length;
-                 console.log(`Found ${expectedQuestionCount} questions for Chapter ${challengeIdentifier} (${chapterEntry.title}).`);
+                if (!chapterEntry) {
+                    return new Response(JSON.stringify({ error: `提交失敗：未找到順序號為 ${order} 的篇目數據。` }), { status: 404, headers: baseHeaders });
+                }
+                // Map chapter questions to QuestionInfo format, including answers
+                questionsToScore = chapterEntry.questions.map((q, index) => ({
+                    id: `chapter-${chapterEntry.order}-q${index}`, // Use the predictable ID
+                    question: q.question,
+                    answer: q.answer, // Include the answer!
+                    sourceTitle: chapterEntry.title,
+                    sourceAuthor: chapterEntry.author,
+                    sourceCategory: chapterEntry.category,
+                    sourceOrder: chapterEntry.order
+                }));
+                expectedQuestionCount = questionsToScore.length;
+                console.log(`Found ${expectedQuestionCount} questions for Chapter ${challengeIdentifier} (${chapterEntry.title}).`);
             }
 
             if (expectedQuestionCount === 0) {
-                 console.error(`Logic error: Expected question count is zero for ${challengeType} challenge ${challengeIdentifier}`);
-                 return new Response(JSON.stringify({ error: '內部錯誤：未能加載到任何題目信息。' }), { status: 500, headers: baseHeaders });
+                console.error(`Logic error: Expected question count is zero for ${challengeType} challenge ${challengeIdentifier}`);
+                return new Response(JSON.stringify({ error: '內部錯誤：未能加載到任何題目信息。' }), { status: 500, headers: baseHeaders });
             }
 
             const correctAnswers = questionsToScore.map((q: QuestionInfo) => q.answer);
@@ -551,11 +551,11 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             const imageBuffer = await imageFile.arrayBuffer();
             const r2Key = generateUniqueKey(`${challengeType}-${challengeIdentifier}-answer`, `.${imageFile.type.split('/')[1] || 'png'}`);
             try {
-                 await env.IMAGES_BUCKET.put(r2Key, imageBuffer, { httpMetadata: { contentType: imageFile.type }});
-                 console.log(`Stored image in R2 with key: ${r2Key} for ${challengeType} challenge ${challengeIdentifier}`);
+                await env.IMAGES_BUCKET.put(r2Key, imageBuffer, { httpMetadata: { contentType: imageFile.type } });
+                console.log(`Stored image in R2 with key: ${r2Key} for ${challengeType} challenge ${challengeIdentifier}`);
             } catch (r2Error: any) {
-                 console.error(`R2 put error for key ${r2Key}:`, r2Error);
-                 return new Response(JSON.stringify({ error: `圖片存儲失敗: ${r2Error.message || 'Unknown R2 error'}` }), { status: 500, headers: baseHeaders });
+                console.error(`R2 put error for key ${r2Key}:`, r2Error);
+                return new Response(JSON.stringify({ error: `圖片存儲失敗: ${r2Error.message || 'Unknown R2 error'}` }), { status: 500, headers: baseHeaders });
             }
 
 
@@ -596,18 +596,18 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 if (part && 'text' in part) {
                     recognizedTextCombined = part.text.trim();
                 } else if (geminiResult.error) {
-                     ocrError = `AI OCR 服務錯誤: ${geminiResult.error.message}`;
-                     console.error(`OCR API Error from structure for ${challengeType} challenge ${challengeIdentifier}:`, geminiResult.error);
+                    ocrError = `AI OCR 服務錯誤: ${geminiResult.error.message}`;
+                    console.error(`OCR API Error from structure for ${challengeType} challenge ${challengeIdentifier}:`, geminiResult.error);
                 } else {
                     ocrError = "AI OCR 返回了非預期的響應格式 (無文本部分)。";
                     console.warn(`OCR Result format issue for ${challengeType} challenge ${challengeIdentifier}. Full Response:`, JSON.stringify(geminiResult));
                 }
 
                 if (!ocrError && !recognizedTextCombined) {
-                     if (ocrFinishReason === "SAFETY") ocrError = "AI OCR 因安全設置拒絕處理圖片內容。";
-                     else if (ocrFinishReason === "RECITATION") ocrError = "AI OCR 因檢測到引用內容而停止。";
-                     else if (ocrFinishReason === "MAX_TOKENS") ocrError = "AI OCR 處理超時或輸出長度受限。";
-                     else ocrError = "AI OCR 未能識別出任何文本內容。";
+                    if (ocrFinishReason === "SAFETY") ocrError = "AI OCR 因安全設置拒絕處理圖片內容。";
+                    else if (ocrFinishReason === "RECITATION") ocrError = "AI OCR 因檢測到引用內容而停止。";
+                    else if (ocrFinishReason === "MAX_TOKENS") ocrError = "AI OCR 處理超時或輸出長度受限。";
+                    else ocrError = "AI OCR 未能識別出任何文本內容。";
                     console.warn(`OCR Result empty for ${challengeType} challenge ${challengeIdentifier}. Finish Reason: ${ocrFinishReason}`);
                 } else if (!ocrError) {
                     console.log(`Raw OCR result for ${challengeType} challenge ${challengeIdentifier}: "${recognizedTextCombined.replace(/\n/g, '\\n')}"`);
@@ -623,9 +623,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                     }
                 }
             } catch (err: any) {
-                 console.error(`Gemini OCR API call failed for ${challengeType} challenge ${challengeIdentifier}:`, err);
-                 ocrError = `AI OCR 識別服務調用失敗: ${err.message}`;
-                 splitAnswers = Array(expectedQuestionCount).fill(`[OCR調用失敗]`);
+                console.error(`Gemini OCR API call failed for ${challengeType} challenge ${challengeIdentifier}:`, err);
+                ocrError = `AI OCR 識別服務調用失敗: ${err.message}`;
+                splitAnswers = Array(expectedQuestionCount).fill(`[OCR調用失敗]`);
             }
 
 
@@ -638,8 +638,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             function removePunctuation(text: string): string {
                 if (typeof text !== 'string') return text;
                 // Keep basic Chinese punctuation often used in answers if needed, otherwise remove all
-                 // return text.replace(/[^\p{L}\p{N}]/gu, ''); // Keeps letters and numbers only
-                 return text.replace(/[\p{P}\p{S}\p{Z}]+/gu, ''); // Removes punctuation, symbols, separators
+                // return text.replace(/[^\p{L}\p{N}]/gu, ''); // Keeps letters and numbers only
+                return text.replace(/[\p{P}\p{S}\p{Z}]+/gu, ''); // Removes punctuation, symbols, separators
             }
 
             for (let i = 0; i < expectedQuestionCount; i++) {
@@ -655,36 +655,36 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                     itemError = recognized.substring(1, recognized.length - 1);
                     success = false;
                 } else if (recognized === "[無法識別]") {
-                     itemError = "AI 無法識別此答案";
-                     success = false;
-                 }
+                    itemError = "AI 無法識別此答案";
+                    success = false;
+                }
 
                 if (success && correct !== undefined) {
                     const cleanedRecognized = removePunctuation(recognized);
                     const cleanedCorrect = removePunctuation(correct);
                     isCorrect = cleanedRecognized === cleanedCorrect && cleanedRecognized !== "";
 
-                     if (!isCorrect && cleanedRecognized === "" && recognized !== "") itemError = "識別結果僅包含標點或空格";
-                     else if (recognized.trim() === "" && !itemError) itemError = "未作答或未識別到內容";
+                    if (!isCorrect && cleanedRecognized === "" && recognized !== "") itemError = "識別結果僅包含標點或空格";
+                    else if (recognized.trim() === "" && !itemError) itemError = "未作答或未識別到內容";
 
                     score = isCorrect ? pointsPerQuestion : 0;
                 } else {
                     isCorrect = false; score = 0;
                     if (correct === undefined) {
-                         itemError = itemError ? `${itemError}; 標準答案缺失` : "標準答案缺失";
-                         success = false;
+                        itemError = itemError ? `${itemError}; 標準答案缺失` : "標準答案缺失";
+                        success = false;
                     }
-                 }
+                }
 
                 results.push({
-                     questionIndex: i,
-                     questionId: questionId, // Use the stored question ID
-                     success: success,
-                     recognizedText: recognized,
-                     correctAnswer: correct || "[標準答案缺失]",
-                     isCorrect: isCorrect,
-                     score: score, // Use calculated score
-                     error: itemError
+                    questionIndex: i,
+                    questionId: questionId, // Use the stored question ID
+                    success: success,
+                    recognizedText: recognized,
+                    correctAnswer: correct || "[標準答案缺失]",
+                    isCorrect: isCorrect,
+                    score: score, // Use calculated score
+                    error: itemError
                 });
                 totalScore += score;
             }
@@ -701,7 +701,10 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             // --- Rank/Badge Logic (Only applies to GaoKao challenge) ---
             let currentRank = 0; // Default rank
             let badge = "";
-            const rankKey = `user-rank-${challengeIdentifier}`; // Use setId for rank tracking
+            // Bug Fix: Use userId from form data for persistent rank tracking across sessions
+            const userIdValue = formData.get('userId');
+            const userId = typeof userIdValue === 'string' && userIdValue ? userIdValue : 'anonymous';
+            const rankKey = `user-rank-${userId}`; // Use userId for rank tracking instead of setId
 
             if (challengeType === 'gaokao') {
                 // Get Current Rank from KV
@@ -710,6 +713,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                     if (storedRank) {
                         currentRank = parseInt(storedRank, 10) || 0;
                     }
+                    console.log(`Loaded rank ${currentRank} for user ${userId}`);
                 } catch (kvRankError) {
                     console.error("Failed to get rank from KV:", kvRankError);
                 }
@@ -719,16 +723,23 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             // --- Generate Feedback Text ---
             // Same prompt logic, adapted score context
             const scoreTarget = TOTAL_SCORE_TARGET;
-             if (totalScore === scoreTarget) {
-                 feedback = `太棒了！滿分 ${scoreTarget} 分！簡直是默寫的神！繼續保持！`;
-                 feedbackErrorMsg = null;
+            if (totalScore === scoreTarget) {
+                feedback = `太棒了！滿分 ${scoreTarget} 分！簡直是默寫的神！繼續保持！`;
+                feedbackErrorMsg = null;
 
-                 // --- Rank Increase and Badge (Only for GaoKao) ---
-                 if (challengeType === 'gaokao') {
-                     currentRank++;
-                     badge = `${convertToChineseRank(currentRank)}階`;
-                     if (currentRank === 1) badge = `初窺門徑`;
-                     if (currentRank >= 7) badge = `巔峰七階`;
+                // --- Rank Increase and Badge (Only for GaoKao) ---
+                if (challengeType === 'gaokao') {
+                    currentRank++;
+                    // Bug Fix: Proper badge assignment without overwriting
+                    if (currentRank === 1) {
+                        badge = '初窺門徑';
+                    } else if (currentRank >= 10) {
+                        badge = '登峰造極';
+                    } else if (currentRank >= 7) {
+                        badge = `巔峰${convertToChineseRank(currentRank)}階`;
+                    } else {
+                        badge = `${convertToChineseRank(currentRank)}階`;
+                    }
                 }
 
             } else {
@@ -762,7 +773,7 @@ ${ocrError ? `\n圖片識別提示: ${ocrError}` : ''}
 現在，請開始用溫和且鼓勵的語氣進行點評吧！`;
 
                 // ... (Rest of feedback generation call and processing is the same)
-                 try {
+                try {
                     console.log(`Generating Gentle AI feedback for ${challengeType} challenge ${challengeIdentifier}...`);
                     const feedbackContents: GeminiContent[] = [{ parts: [{ text: feedbackPrompt }] }];
                     const feedbackResult = await callGeminiAPI(
@@ -783,12 +794,12 @@ ${ocrError ? `\n圖片識別提示: ${ocrError}` : ''}
                         if (trimmedText.length > 0) { generatedText = trimmedText; extractionFailureReason = ""; }
                         else { extractionFailureReason = "Extracted text is empty."; console.warn(`AI feedback empty for ${challengeType} challenge ${challengeIdentifier}. Finish: ${feedbackFinishReason}`); }
                     } else if (feedbackResult.error) {
-                         extractionFailureReason = `API Error: ${feedbackResult.error.message}`; console.error(`AI feedback API error for ${challengeType} challenge ${challengeIdentifier}:`, feedbackResult.error);
+                        extractionFailureReason = `API Error: ${feedbackResult.error.message}`; console.error(`AI feedback API error for ${challengeType} challenge ${challengeIdentifier}:`, feedbackResult.error);
                     } else {
-                         if (!feedbackResult.candidates?.length) extractionFailureReason = "No candidates.";
-                         else if (!candidate?.content?.parts?.length) extractionFailureReason = "No parts.";
-                         else extractionFailureReason = "First part not text.";
-                         console.warn(`AI feedback extraction: ${extractionFailureReason} for ${challengeType} challenge ${challengeIdentifier}. Resp:`, JSON.stringify(feedbackResult));
+                        if (!feedbackResult.candidates?.length) extractionFailureReason = "No candidates.";
+                        else if (!candidate?.content?.parts?.length) extractionFailureReason = "No parts.";
+                        else extractionFailureReason = "First part not text.";
+                        console.warn(`AI feedback extraction: ${extractionFailureReason} for ${challengeType} challenge ${challengeIdentifier}. Resp:`, JSON.stringify(feedbackResult));
                     }
 
                     if (feedbackFinishReason && feedbackFinishReason !== "STOP" && generatedText !== null) {
@@ -800,31 +811,39 @@ ${ocrError ? `\n圖片識別提示: ${ocrError}` : ''}
                         feedback = `${generatedText}\n\n[系統提示: ${reasonWarning}]`;
                         feedbackErrorMsg = reasonWarning;
                     } else if (generatedText !== null) {
-                         feedback = generatedText; feedbackErrorMsg = null;
-                         console.log(`AI feedback generated successfully for ${challengeType} challenge ${challengeIdentifier}.`);
-                     } else {
+                        feedback = generatedText; feedbackErrorMsg = null;
+                        console.log(`AI feedback generated successfully for ${challengeType} challenge ${challengeIdentifier}.`);
+                    } else {
                         console.error(`Failed to extract AI feedback for ${challengeType} challenge ${challengeIdentifier}. Reason: ${extractionFailureReason}. Finish: ${feedbackFinishReason}. Using fallback.`);
                         console.error("Full Gemini Response causing fallback:", JSON.stringify(feedbackResult, null, 2));
                         let fallbackReason = extractionFailureReason;
-                         if (!fallbackReason.toLowerCase().includes("api error") && feedbackFinishReason && feedbackFinishReason !== "STOP") {
-                             fallbackReason += ` (處理結束原因: ${feedbackFinishReason})`;
-                         }
+                        if (!fallbackReason.toLowerCase().includes("api error") && feedbackFinishReason && feedbackFinishReason !== "STOP") {
+                            fallbackReason += ` (處理結束原因: ${feedbackFinishReason})`;
+                        }
                         feedbackErrorMsg = `AI 反饋生成成功，但內容提取失敗 (${fallbackReason})。`;
                         feedback = `得分 ${totalScore.toFixed(1)}，失分 ${(scoreTarget - totalScore).toFixed(1)}。這次表現還有進步空間哦。看看下面的錯誤細節，下次加油！\n錯誤詳情:\n${errorDetails || "（未能生成詳細的錯誤分析）"}`;
                     }
 
                 } catch (feedbackError: any) {
-                     console.error(`Gemini feedback generation failed for ${challengeType} challenge ${challengeIdentifier}:`, feedbackError);
-                     feedbackErrorMsg = `AI 反饋生成服務調用失敗: ${feedbackError.message}`;
-                     feedback = `得分 ${totalScore.toFixed(1)}，失分 ${(scoreTarget - totalScore).toFixed(1)}。這次表現還有進步空間哦。看看下面的錯誤細節，下次加油！\n錯誤詳情:\n${errorDetails || "（未能生成詳細的錯誤分析）"}`;
+                    console.error(`Gemini feedback generation failed for ${challengeType} challenge ${challengeIdentifier}:`, feedbackError);
+                    feedbackErrorMsg = `AI 反饋生成服務調用失敗: ${feedbackError.message}`;
+                    feedback = `得分 ${totalScore.toFixed(1)}，失分 ${(scoreTarget - totalScore).toFixed(1)}。這次表現還有進步空間哦。看看下面的錯誤細節，下次加油！\n錯誤詳情:\n${errorDetails || "（未能生成詳細的錯誤分析）"}`;
                 }
 
-                 // --- Rank Decrease (Only for GaoKao) ---
-                 if (challengeType === 'gaokao') {
-                     if (currentRank > 0) currentRank--;
-                     badge = currentRank > 0 ? `${convertToChineseRank(currentRank)}階` : "初窺門徑";
-                     if (currentRank >= 7) badge = `巔峰七階`;
-                 }
+                // --- Rank Decrease (Only for GaoKao) ---
+                if (challengeType === 'gaokao') {
+                    if (currentRank > 0) currentRank--;
+                    // Bug Fix: Consistent badge assignment logic
+                    if (currentRank === 0) {
+                        badge = '初窺門徑';
+                    } else if (currentRank >= 10) {
+                        badge = '登峰造極';
+                    } else if (currentRank >= 7) {
+                        badge = `巔峰${convertToChineseRank(currentRank)}階`;
+                    } else {
+                        badge = `${convertToChineseRank(currentRank)}階`;
+                    }
+                }
             }
 
             // --- Store Updated Rank (Only for GaoKao) ---
@@ -843,11 +862,11 @@ ${ocrError ? `\n圖片識別提示: ${ocrError}` : ''}
             if (ocrError && feedbackErrorMsg) finalMessage = "評分完成，但圖片識別和 AI 反饋生成均遇到問題。";
             else if (ocrError) finalMessage = "評分完成，但圖片識別過程遇到問題。";
             else if (feedbackErrorMsg) {
-                 let feedbackIssueDetail = feedbackErrorMsg;
-                 if (feedbackFinishReason && feedbackFinishReason !== "STOP" && !feedbackErrorMsg.includes(feedbackFinishReason)) {
-                     feedbackIssueDetail += ` (原因: ${feedbackFinishReason})`;
-                 }
-                 finalMessage = `評分完成，但 AI 反饋生成過程遇到問題: ${feedbackIssueDetail}`;
+                let feedbackIssueDetail = feedbackErrorMsg;
+                if (feedbackFinishReason && feedbackFinishReason !== "STOP" && !feedbackErrorMsg.includes(feedbackFinishReason)) {
+                    feedbackIssueDetail += ` (原因: ${feedbackFinishReason})`;
+                }
+                finalMessage = `評分完成，但 AI 反饋生成過程遇到問題: ${feedbackIssueDetail}`;
             }
 
             const responseData: any = { // Use 'any' temporarily for flexibility

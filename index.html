@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -17,7 +18,7 @@
             font-family: 'HuWenMingChao';
             /* Assuming the paths are correct relative to the HTML file's location */
             src: url('./data/fonts/HuWenMingChaoTi.woff2') format('woff2'),
-                 url('./data/fonts/HuWenMingChaoTi.woff') format('woff');
+                url('./data/fonts/HuWenMingChaoTi.woff') format('woff');
             font-weight: normal;
             font-style: normal;
             font-display: swap;
@@ -50,12 +51,21 @@
             --ghibli-q-4: #e5eaed;
             --font-primary: 'HuWenMingChao', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
             --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-            --footer-height: 60px; /* Define footer height as a variable */
+            --footer-height: 60px;
+            /* Define footer height as a variable */
         }
 
         /* --- Base & Body Styles --- */
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        html { scroll-behavior: smooth; }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
         body {
             font-family: var(--font-primary);
             line-height: 1.7;
@@ -74,138 +84,628 @@
         }
 
         /* --- Layout Container --- */
-        .page-container { display: flex; height: calc(100vh - var(--footer-height)); width: 100%; position: absolute; top: 0; left: 0; }
-        .left-column, .right-column { height: 100%; overflow-y: auto; padding: 30px; -ms-overflow-style: none; scrollbar-width: none; }
-        .left-column::-webkit-scrollbar, .right-column::-webkit-scrollbar { display: none; }
-        .left-column { flex: 1; min-width: 300px; border-right: 1px solid var(--ghibli-border-color); }
-        .right-column { flex: 1.2; min-width: 320px; display: flex; flex-direction: column; background-color: rgba(255, 255, 255, 0.5); }
+        .page-container {
+            display: flex;
+            height: calc(100vh - var(--footer-height));
+            width: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .left-column,
+        .right-column {
+            height: 100%;
+            overflow-y: auto;
+            padding: 30px;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        .left-column::-webkit-scrollbar,
+        .right-column::-webkit-scrollbar {
+            display: none;
+        }
+
+        .left-column {
+            flex: 1;
+            min-width: 300px;
+            border-right: 1px solid var(--ghibli-border-color);
+        }
+
+        .right-column {
+            flex: 1.2;
+            min-width: 320px;
+            display: flex;
+            flex-direction: column;
+            background-color: rgba(255, 255, 255, 0.5);
+        }
 
         /* --- Footer (Fixed) --- */
-        footer { position: fixed; bottom: 0; left: 0; width: 100%; background-color: var(--ghibli-footer-bg); border-top: 1px solid var(--ghibli-border-color); padding: 15px 0; height: var(--footer-height); text-align: center; font-size: 0.9em; color: var(--ghibli-text-light); z-index: 10; box-shadow: 0 -2px 5px rgba(93, 85, 81, 0.05); }
-        footer a { color: var(--ghibli-text-light); text-decoration: underline; }
-        footer a:hover { color: var(--ghibli-primary); }
+        footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: var(--ghibli-footer-bg);
+            border-top: 1px solid var(--ghibli-border-color);
+            padding: 15px 0;
+            height: var(--footer-height);
+            text-align: center;
+            font-size: 0.9em;
+            color: var(--ghibli-text-light);
+            z-index: 10;
+            box-shadow: 0 -2px 5px rgba(93, 85, 81, 0.05);
+        }
+
+        footer a {
+            color: var(--ghibli-text-light);
+            text-decoration: underline;
+        }
+
+        footer a:hover {
+            color: var(--ghibli-primary);
+        }
 
         /* --- Responsive --- */
         @media (max-width: 800px) {
-            body { min-height: 0; padding-bottom: var(--footer-height); }
-            .page-container { flex-direction: column; height: auto; position: static; }
-            .left-column, .right-column { height: auto; overflow-y: visible; width: 100%; flex: none; border-right: none; border-bottom: 1px solid var(--ghibli-border-color); padding: 20px; }
-            .right-column { border-bottom: none; }
+            body {
+                min-height: 0;
+                padding-bottom: var(--footer-height);
+            }
+
+            .page-container {
+                flex-direction: column;
+                height: auto;
+                position: static;
+            }
+
+            .left-column,
+            .right-column {
+                height: auto;
+                overflow-y: visible;
+                width: 100%;
+                flex: none;
+                border-right: none;
+                border-bottom: 1px solid var(--ghibli-border-color);
+                padding: 20px;
+            }
+
+            .right-column {
+                border-bottom: none;
+            }
         }
 
         /* --- General Styles --- */
-        h1, h2 { font-family: var(--font-primary); color: var(--ghibli-primary-dark); text-align: center; margin-bottom: 20px; font-weight: normal; }
-        h1 { font-size: 2.2em; margin-bottom: 10px; }
-        h2 { font-size: 1.6em; border-bottom: 1px solid var(--ghibli-border-color); padding-bottom: 10px; margin-top: 30px; }
-        p { margin-bottom: 15px; }
-        strong { color: var(--ghibli-error-text); font-weight: normal; }
-        a { color: var(--ghibli-primary); text-decoration: none; }
-        a:hover { text-decoration: underline; color: var(--ghibli-primary-dark); }
-        #status, #questions, #result, #upload-section, #chapter-selection, .feedback-box, .processing-hints, .error-message, .rank-badge-section { margin-top: 25px; padding: 20px; border: 1px solid var(--ghibli-border-color); border-radius: 12px; background-color: rgba(255, 255, 255, 0.7); box-shadow: var(--ghibli-shadow); }
-        #status { text-align: center; font-style: italic; color: var(--ghibli-text-light); background-color: transparent; border: none; box-shadow: none; padding: 10px 0;}
-        #questions { background-color: rgba(242, 239, 234, 0.6); }
-        #upload-section { border-top: 2px dashed var(--ghibli-primary); margin-top: 30px; }
-        .button-group { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 25px; justify-content: center; }
-        button { padding: 11px 24px; cursor: pointer; background-color: var(--ghibli-primary); color: var(--ghibli-bg); border: none; border-radius: 20px; font-size: 1em; font-family: var(--font-primary); transition: background-color 0.25s ease, transform 0.15s ease, box-shadow 0.2s ease; box-shadow: 0 2px 4px rgba(93, 85, 81, 0.15); }
-        button:hover:not(:disabled) { background-color: var(--ghibli-primary-dark); box-shadow: 0 4px 8px rgba(93, 85, 81, 0.2); }
-        button:active:not(:disabled) { transform: scale(0.97); box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1); }
-        button:disabled { background-color: var(--ghibli-accent1); color: var(--ghibli-text-light); cursor: not-allowed; opacity: 0.7; box-shadow: none; }
-        button.loading-active { opacity: 0.8; }
-        #submit-btn { background-color: var(--ghibli-accent2); color: var(--ghibli-text); width: calc(100% - 10px); margin-top: 20px; }
-        #submit-btn:hover:not(:disabled) { background-color: #a6bb97; }
-        #question-list { margin-top: 15px; }
-        .question-item { margin-bottom: 15px; padding: 15px; border-radius: 8px; border: 1px solid transparent; transition: background-color 0.3s ease, border-color 0.3s ease; color: var(--ghibli-text); }
-        .question-item:nth-child(4n+1) { background-color: var(--ghibli-q-1); border-color: var(--ghibli-border-color); }
-        .question-item:nth-child(4n+2) { background-color: var(--ghibli-q-2); border-color: var(--ghibli-border-color); }
-        .question-item:nth-child(4n+3) { background-color: var(--ghibli-q-3); border-color: var(--ghibli-border-color); }
-        .question-item:nth-child(4n+4) { background-color: var(--ghibli-q-4); border-color: var(--ghibli-border-color); }
-        .question-item p { margin: 0; }
-        .question-text { display: block; margin-bottom: 5px; font-weight: normal; font-size: 1.1em; color: var(--ghibli-text); }
+        h1,
+        h2 {
+            font-family: var(--font-primary);
+            color: var(--ghibli-primary-dark);
+            text-align: center;
+            margin-bottom: 20px;
+            font-weight: normal;
+        }
+
+        h1 {
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+
+        h2 {
+            font-size: 1.6em;
+            border-bottom: 1px solid var(--ghibli-border-color);
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+
+        p {
+            margin-bottom: 15px;
+        }
+
+        strong {
+            color: var(--ghibli-error-text);
+            font-weight: normal;
+        }
+
+        a {
+            color: var(--ghibli-primary);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+            color: var(--ghibli-primary-dark);
+        }
+
+        #status,
+        #questions,
+        #result,
+        #upload-section,
+        #chapter-selection,
+        .feedback-box,
+        .processing-hints,
+        .error-message,
+        .rank-badge-section {
+            margin-top: 25px;
+            padding: 20px;
+            border: 1px solid var(--ghibli-border-color);
+            border-radius: 12px;
+            background-color: rgba(255, 255, 255, 0.7);
+            box-shadow: var(--ghibli-shadow);
+        }
+
+        #status {
+            text-align: center;
+            font-style: italic;
+            color: var(--ghibli-text-light);
+            background-color: transparent;
+            border: none;
+            box-shadow: none;
+            padding: 10px 0;
+        }
+
+        #questions {
+            background-color: rgba(242, 239, 234, 0.6);
+        }
+
+        #upload-section {
+            border-top: 2px dashed var(--ghibli-primary);
+            margin-top: 30px;
+        }
+
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 25px;
+            justify-content: center;
+        }
+
+        button {
+            padding: 11px 24px;
+            cursor: pointer;
+            background-color: var(--ghibli-primary);
+            color: var(--ghibli-bg);
+            border: none;
+            border-radius: 20px;
+            font-size: 1em;
+            font-family: var(--font-primary);
+            transition: background-color 0.25s ease, transform 0.15s ease, box-shadow 0.2s ease;
+            box-shadow: 0 2px 4px rgba(93, 85, 81, 0.15);
+        }
+
+        button:hover:not(:disabled) {
+            background-color: var(--ghibli-primary-dark);
+            box-shadow: 0 4px 8px rgba(93, 85, 81, 0.2);
+        }
+
+        button:active:not(:disabled) {
+            transform: scale(0.97);
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        button:disabled {
+            background-color: var(--ghibli-accent1);
+            color: var(--ghibli-text-light);
+            cursor: not-allowed;
+            opacity: 0.7;
+            box-shadow: none;
+        }
+
+        button.loading-active {
+            opacity: 0.8;
+        }
+
+        #submit-btn {
+            background-color: var(--ghibli-accent2);
+            color: var(--ghibli-text);
+            width: calc(100% - 10px);
+            margin-top: 20px;
+        }
+
+        #submit-btn:hover:not(:disabled) {
+            background-color: #a6bb97;
+        }
+
+        #question-list {
+            margin-top: 15px;
+        }
+
+        .question-item {
+            margin-bottom: 15px;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid transparent;
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+            color: var(--ghibli-text);
+        }
+
+        .question-item:nth-child(4n+1) {
+            background-color: var(--ghibli-q-1);
+            border-color: var(--ghibli-border-color);
+        }
+
+        .question-item:nth-child(4n+2) {
+            background-color: var(--ghibli-q-2);
+            border-color: var(--ghibli-border-color);
+        }
+
+        .question-item:nth-child(4n+3) {
+            background-color: var(--ghibli-q-3);
+            border-color: var(--ghibli-border-color);
+        }
+
+        .question-item:nth-child(4n+4) {
+            background-color: var(--ghibli-q-4);
+            border-color: var(--ghibli-border-color);
+        }
+
+        .question-item p {
+            margin: 0;
+        }
+
+        .question-text {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: normal;
+            font-size: 1.1em;
+            color: var(--ghibli-text);
+        }
+
         /* Removed question-details span as per Req 3 */
-        .underline-blank { border-bottom: 1.5px dashed var(--ghibli-text-light); padding: 0 0.5em; color: var(--ghibli-text-light); display: inline-block; min-width: 5em; text-align: center; }
-        #image-upload-label { display: block; margin-bottom: 10px; font-weight: bold; color: var(--ghibli-primary-dark); }
-        input[type="file"] { font-family: var(--font-primary); color: var(--ghibli-text); padding: 5px; margin-bottom: 15px; }
-        input[type="file"]::file-selector-button { font-family: var(--font-primary); padding: 8px 15px; margin-right: 15px; cursor: pointer; background-color: var(--ghibli-accent1); color: var(--ghibli-text); border: 1px solid var(--ghibli-border-color); border-radius: 15px; transition: background-color 0.2s ease; }
-        input[type="file"]::file-selector-button:hover { background-color: rgba(224, 216, 204, 0.85); }
-        #image-preview-container { margin-top: 15px; text-align: center; }
-        #image-preview { max-width: 90%; max-height: 350px; border: 1px solid var(--ghibli-border-color); border-radius: 8px; display: none; margin: 10px auto; box-shadow: var(--ghibli-shadow); }
-        #compression-info { font-size: 0.9em; color: var(--ghibli-text-light); margin-top: 10px; text-align: center; min-height: 1.2em; }
-        #result { background-color: rgba(255, 255, 255, 0.75); }
-        .result-item { margin-bottom: 15px; padding: 15px; border: 1px solid var(--ghibli-border-color); border-radius: 8px; border-left-width: 6px; border-left-style: solid; transition: border-color 0.3s ease; background-color: var(--ghibli-bg); }
-        .result-item p { margin: 8px 0; }
-        .result-item strong { color: var(--ghibli-primary-dark); font-weight: bold; }
-        .result-item .label { font-weight: bold; color: var(--ghibli-text-light); min-width: 75px; display: inline-block;}
-        .recognized-text, .correct-answer-text, .incorrect-answer-text, .unrecognized-text { font-weight: normal; padding: 3px 6px; border-radius: 4px; display: inline-block; word-break: break-word; overflow-wrap: break-word; line-height: 1.5; }
-        .correct-answer-text { color: var(--ghibli-success-text); background-color: var(--ghibli-success-bg); border: 1px solid var(--ghibli-success-border); }
-        .incorrect-answer-text { color: var(--ghibli-error-text); background-color: var(--ghibli-error-bg); border: 1px solid var(--ghibli-error-border); }
-        .unrecognized-text { color: var(--ghibli-text-light); background-color: var(--ghibli-accent1); font-style: italic; border: 1px solid var(--ghibli-border-color); }
-        .correct-tick, .incorrect-cross { font-weight: bold; margin-left: 8px; font-size: 1.1em; }
-        .correct-tick { color: var(--ghibli-success-text); }
-        .incorrect-cross { color: var(--ghibli-error-text); }
-        .processing-failed-text { color: var(--ghibli-warning-text); font-style: italic; }
-        .error-message, .processing-hints, .feedback-box { border-radius: 8px; padding: 15px; margin-top: 20px; font-size: 1em; text-align: left; white-space: pre-wrap; word-wrap: break-word; border: 1px solid; }
-        .error-message { background-color: var(--ghibli-error-bg); border-color: var(--ghibli-error-border); color: var(--ghibli-error-text); font-weight: bold; }
-        .processing-hints { background-color: var(--ghibli-warning-bg); border-color: var(--ghibli-warning-border); color: var(--ghibli-warning-text); }
-        .processing-hints p { margin: 5px 0; font-weight: bold; }
-        .item-hint { color: var(--ghibli-warning-text); font-size: 0.9em; margin-top: 5px; font-style: italic; }
-        .feedback-box { text-align: center; margin-top: 30px; font-size: 1.1em; line-height: 1.8; }
-        .feedback-success { background-color: var(--ghibli-success-bg); border-color: var(--ghibli-success-border); color: var(--ghibli-success-text); font-weight: bold; }
-        .feedback-fail { background-color: var(--ghibli-error-bg); border-color: var(--ghibli-error-border); color: var(--ghibli-error-text); font-weight: bold; font-size: 1.15em; }
-        .feedback-box pre { background-color: transparent; padding: 0; border-radius: 0; white-space: pre-wrap; word-wrap: break-word; font-size: inherit; color: inherit; border: none; font-family: var(--font-primary); text-align: left; max-height: none; overflow: visible; }
-        .loading { font-style: italic; color: var(--ghibli-text-light); text-align: center; padding: 30px; font-size: 1.1em; border: 1px dashed var(--ghibli-border-color); border-radius: 8px; background-color: rgba(255, 255, 255, 0.6); }
-        @keyframes celebrate-box { 0% { transform: scale(1); box-shadow: var(--ghibli-shadow); } 50% { transform: scale(1.01); box-shadow: 0 8px 16px rgba(90, 142, 100, 0.2); } 100% { transform: scale(1); box-shadow: var(--ghibli-shadow); } }
-        #result.full-marks-celebration { animation: celebrate-box 1.8s ease-in-out; border: 1px solid var(--ghibli-success-border); box-shadow: 0 5px 10px rgba(90, 142, 100, 0.15); }
-        .rank-badge-section { text-align: center; margin-top: 25px; padding: 15px; background-color: rgba(224, 216, 204, 0.2); border: 1px solid var(--ghibli-border-color); border-radius: 8px; }
-        .badge-display { font-size: 1.3em; font-weight: bold; color: var(--ghibli-primary-dark); }
-        .badge-display span { font-size: 1.6em; vertical-align: middle; margin: 0 5px; color: var(--ghibli-primary); }
-        .rank-display { margin-top: 5px; font-size: 0.95em; color: var(--ghibli-text-light); }
+        .underline-blank {
+            border-bottom: 1.5px dashed var(--ghibli-text-light);
+            padding: 0 0.5em;
+            color: var(--ghibli-text-light);
+            display: inline-block;
+            min-width: 5em;
+            text-align: center;
+        }
+
+        #image-upload-label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: var(--ghibli-primary-dark);
+        }
+
+        input[type="file"] {
+            font-family: var(--font-primary);
+            color: var(--ghibli-text);
+            padding: 5px;
+            margin-bottom: 15px;
+        }
+
+        input[type="file"]::file-selector-button {
+            font-family: var(--font-primary);
+            padding: 8px 15px;
+            margin-right: 15px;
+            cursor: pointer;
+            background-color: var(--ghibli-accent1);
+            color: var(--ghibli-text);
+            border: 1px solid var(--ghibli-border-color);
+            border-radius: 15px;
+            transition: background-color 0.2s ease;
+        }
+
+        input[type="file"]::file-selector-button:hover {
+            background-color: rgba(224, 216, 204, 0.85);
+        }
+
+        #image-preview-container {
+            margin-top: 15px;
+            text-align: center;
+        }
+
+        #image-preview {
+            max-width: 90%;
+            max-height: 350px;
+            border: 1px solid var(--ghibli-border-color);
+            border-radius: 8px;
+            display: none;
+            margin: 10px auto;
+            box-shadow: var(--ghibli-shadow);
+        }
+
+        #compression-info {
+            font-size: 0.9em;
+            color: var(--ghibli-text-light);
+            margin-top: 10px;
+            text-align: center;
+            min-height: 1.2em;
+        }
+
+        #result {
+            background-color: rgba(255, 255, 255, 0.75);
+        }
+
+        .result-item {
+            margin-bottom: 15px;
+            padding: 15px;
+            border: 1px solid var(--ghibli-border-color);
+            border-radius: 8px;
+            border-left-width: 6px;
+            border-left-style: solid;
+            transition: border-color 0.3s ease;
+            background-color: var(--ghibli-bg);
+        }
+
+        .result-item p {
+            margin: 8px 0;
+        }
+
+        .result-item strong {
+            color: var(--ghibli-primary-dark);
+            font-weight: bold;
+        }
+
+        .result-item .label {
+            font-weight: bold;
+            color: var(--ghibli-text-light);
+            min-width: 75px;
+            display: inline-block;
+        }
+
+        .recognized-text,
+        .correct-answer-text,
+        .incorrect-answer-text,
+        .unrecognized-text {
+            font-weight: normal;
+            padding: 3px 6px;
+            border-radius: 4px;
+            display: inline-block;
+            word-break: break-word;
+            overflow-wrap: break-word;
+            line-height: 1.5;
+        }
+
+        .correct-answer-text {
+            color: var(--ghibli-success-text);
+            background-color: var(--ghibli-success-bg);
+            border: 1px solid var(--ghibli-success-border);
+        }
+
+        .incorrect-answer-text {
+            color: var(--ghibli-error-text);
+            background-color: var(--ghibli-error-bg);
+            border: 1px solid var(--ghibli-error-border);
+        }
+
+        .unrecognized-text {
+            color: var(--ghibli-text-light);
+            background-color: var(--ghibli-accent1);
+            font-style: italic;
+            border: 1px solid var(--ghibli-border-color);
+        }
+
+        .correct-tick,
+        .incorrect-cross {
+            font-weight: bold;
+            margin-left: 8px;
+            font-size: 1.1em;
+        }
+
+        .correct-tick {
+            color: var(--ghibli-success-text);
+        }
+
+        .incorrect-cross {
+            color: var(--ghibli-error-text);
+        }
+
+        .processing-failed-text {
+            color: var(--ghibli-warning-text);
+            font-style: italic;
+        }
+
+        .error-message,
+        .processing-hints,
+        .feedback-box {
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 1em;
+            text-align: left;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            border: 1px solid;
+        }
+
+        .error-message {
+            background-color: var(--ghibli-error-bg);
+            border-color: var(--ghibli-error-border);
+            color: var(--ghibli-error-text);
+            font-weight: bold;
+        }
+
+        .processing-hints {
+            background-color: var(--ghibli-warning-bg);
+            border-color: var(--ghibli-warning-border);
+            color: var(--ghibli-warning-text);
+        }
+
+        .processing-hints p {
+            margin: 5px 0;
+            font-weight: bold;
+        }
+
+        .item-hint {
+            color: var(--ghibli-warning-text);
+            font-size: 0.9em;
+            margin-top: 5px;
+            font-style: italic;
+        }
+
+        .feedback-box {
+            text-align: center;
+            margin-top: 30px;
+            font-size: 1.1em;
+            line-height: 1.8;
+        }
+
+        .feedback-success {
+            background-color: var(--ghibli-success-bg);
+            border-color: var(--ghibli-success-border);
+            color: var(--ghibli-success-text);
+            font-weight: bold;
+        }
+
+        .feedback-fail {
+            background-color: var(--ghibli-error-bg);
+            border-color: var(--ghibli-error-border);
+            color: var(--ghibli-error-text);
+            font-weight: bold;
+            font-size: 1.15em;
+        }
+
+        .feedback-box pre {
+            background-color: transparent;
+            padding: 0;
+            border-radius: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: inherit;
+            color: inherit;
+            border: none;
+            font-family: var(--font-primary);
+            text-align: left;
+            max-height: none;
+            overflow: visible;
+        }
+
+        .loading {
+            font-style: italic;
+            color: var(--ghibli-text-light);
+            text-align: center;
+            padding: 30px;
+            font-size: 1.1em;
+            border: 1px dashed var(--ghibli-border-color);
+            border-radius: 8px;
+            background-color: rgba(255, 255, 255, 0.6);
+        }
+
+        @keyframes celebrate-box {
+            0% {
+                transform: scale(1);
+                box-shadow: var(--ghibli-shadow);
+            }
+
+            50% {
+                transform: scale(1.01);
+                box-shadow: 0 8px 16px rgba(90, 142, 100, 0.2);
+            }
+
+            100% {
+                transform: scale(1);
+                box-shadow: var(--ghibli-shadow);
+            }
+        }
+
+        #result.full-marks-celebration {
+            animation: celebrate-box 1.8s ease-in-out;
+            border: 1px solid var(--ghibli-success-border);
+            box-shadow: 0 5px 10px rgba(90, 142, 100, 0.15);
+        }
+
+        .rank-badge-section {
+            text-align: center;
+            margin-top: 25px;
+            padding: 15px;
+            background-color: rgba(224, 216, 204, 0.2);
+            border: 1px solid var(--ghibli-border-color);
+            border-radius: 8px;
+        }
+
+        .badge-display {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: var(--ghibli-primary-dark);
+        }
+
+        .badge-display span {
+            font-size: 1.6em;
+            vertical-align: middle;
+            margin: 0 5px;
+            color: var(--ghibli-primary);
+        }
+
+        .rank-display {
+            margin-top: 5px;
+            font-size: 0.95em;
+            color: var(--ghibli-text-light);
+        }
 
         /* --- Styles for Chapter Selection --- (Requirement 9) */
-        #chapter-selection { background-color: rgba(242, 239, 234, 0.7); padding: 25px; }
-        #chapter-selection h2 { font-size: 1.4em; color: var(--ghibli-primary-dark); margin-bottom: 15px; border: none; text-align: left;}
-        .chapter-list { list-style: none; padding: 0; margin: 0; }
+        #chapter-selection {
+            background-color: rgba(242, 239, 234, 0.7);
+            padding: 25px;
+        }
+
+        #chapter-selection h2 {
+            font-size: 1.4em;
+            color: var(--ghibli-primary-dark);
+            margin-bottom: 15px;
+            border: none;
+            text-align: left;
+        }
+
+        .chapter-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
         .chapter-list-item button {
-            display: block; /* Make button take full width */
+            display: block;
+            /* Make button take full width */
             width: 100%;
             text-align: left;
             padding: 12px 18px;
-            margin-bottom: 8px; /* Space between items */
+            margin-bottom: 8px;
+            /* Space between items */
             font-family: var(--font-primary);
             font-size: 1.05em;
             color: var(--ghibli-text);
-            background-color: var(--ghibli-bg); /* Use light bg */
+            background-color: var(--ghibli-bg);
+            /* Use light bg */
             border: 1px solid var(--ghibli-border-color);
             border-radius: 8px;
             cursor: pointer;
             transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
             box-shadow: var(--ghibli-shadow);
         }
+
         .chapter-list-item button:hover {
             background-color: var(--ghibli-accent1);
             border-color: var(--ghibli-primary);
             box-shadow: 0 4px 8px rgba(93, 85, 81, 0.12);
         }
-        .chapter-list-item button .chapter-order {
-             display: inline-block;
-             min-width: 2em; /* Ensure alignment */
-             margin-right: 10px;
-             color: var(--ghibli-text-light);
-             font-weight: bold;
-         }
-         .chapter-list-item button .chapter-title {
-             font-weight: normal;
-             color: var(--ghibli-text);
-         }
-         .chapter-list-item button:disabled {
-             opacity: 0.6;
-             cursor: not-allowed;
-             background-color: var(--ghibli-accent1);
-         }
 
+        .chapter-list-item button .chapter-order {
+            display: inline-block;
+            min-width: 2em;
+            /* Ensure alignment */
+            margin-right: 10px;
+            color: var(--ghibli-text-light);
+            font-weight: bold;
+        }
+
+        .chapter-list-item button .chapter-title {
+            font-weight: normal;
+            color: var(--ghibli-text);
+        }
+
+        .chapter-list-item button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            background-color: var(--ghibli-accent1);
+        }
     </style>
     <!-- External Libraries -->
-    <script src="https://cdn.bootcdn.net/ajax/libs/browser-image-compression/2.0.2/browser-image-compression.js"></script>
+    <script
+        src="https://cdn.bootcdn.net/ajax/libs/browser-image-compression/2.0.2/browser-image-compression.js"></script>
 </head>
+
 <body>
 
     <!-- Page container holds the scrolling columns -->
@@ -213,42 +713,43 @@
 
         <!-- Left Column: Controls, Questions, Upload -->
         <div class="left-column">
-             <h1>AI 默寫</h1>
-             <p style="text-align: center; color: var(--ghibli-primary-dark);"><strong>高考默寫8分，放條<a href="https://mf.bdfz.net" target="_blank">窺視者</a>都能拿滿！何況是你我！</strong></p>
-             <p style="text-align: center; color: var(--ghibli-error-text); font-weight: bold;">
-                 依序分行，拍照上傳，清晰字跡！
-             </p>
-             <div class="button-group">
-                 <!-- (Requirement 4) Updated button text and added new button -->
-                 <button id="gaokao-challenge-btn">挑戰高考</button>
-                 <button id="select-chapter-btn">選篇挑戰</button>
-             </div>
-             <div id="status">狀態：選擇挑戰模式...</div>
-             <div id="questions" style="display: none;">
-                 <!-- Title will be updated dynamically -->
-                 <h2 id="questions-title">筆墨伺候 (共 8 分)</h2>
-                 <p style="text-align: center; color: var(--ghibli-text-light); font-style: italic;">
-                     <strong style="color: var(--ghibli-error-text);">‼️勿寫題號，一題一行，不加標點‼️ </strong>
-                 </p>
-                 <div id="question-list"></div>
-             </div>
-             <div id="upload-section" style="display: none;">
-                 <h2>拍照上傳</h2>
-                 <label for="image-upload" id="image-upload-label">選擇或拍攝照片:</label>
-                 <input type="file" id="image-upload" name="image-upload" accept="image/*">
-                 <div id="compression-info"></div>
-                 <div id="image-preview-container">
-                     <img id="image-preview" src="#" alt="圖片預覽">
-                 </div>
-                  <button id="submit-btn" disabled>提交墨寶</button>
-             </div>
+            <h1>AI 默寫</h1>
+            <p style="text-align: center; color: var(--ghibli-primary-dark);"><strong>高考默寫8分，放條<a
+                        href="https://mf.bdfz.net" target="_blank">窺視者</a>都能拿滿！何況是你我！</strong></p>
+            <p style="text-align: center; color: var(--ghibli-error-text); font-weight: bold;">
+                依序分行，拍照上傳，清晰字跡！
+            </p>
+            <div class="button-group">
+                <!-- (Requirement 4) Updated button text and added new button -->
+                <button id="gaokao-challenge-btn">挑戰高考</button>
+                <button id="select-chapter-btn">選篇挑戰</button>
+            </div>
+            <div id="status">狀態：選擇挑戰模式...</div>
+            <div id="questions" style="display: none;">
+                <!-- Title will be updated dynamically -->
+                <h2 id="questions-title">筆墨伺候 (共 8 分)</h2>
+                <p style="text-align: center; color: var(--ghibli-text-light); font-style: italic;">
+                    <strong style="color: var(--ghibli-error-text);">‼️勿寫題號，一題一行，不加標點‼️ </strong>
+                </p>
+                <div id="question-list"></div>
+            </div>
+            <div id="upload-section" style="display: none;">
+                <h2>拍照上傳</h2>
+                <label for="image-upload" id="image-upload-label">選擇或拍攝照片:</label>
+                <input type="file" id="image-upload" name="image-upload" accept="image/*">
+                <div id="compression-info"></div>
+                <div id="image-preview-container">
+                    <img id="image-preview" src="#" alt="圖片預覽">
+                </div>
+                <button id="submit-btn" disabled>提交墨寶</button>
+            </div>
         </div><!-- End Left Column -->
 
         <!-- Right Column: Results / Chapter Selection -->
         <div class="right-column">
             <!-- Container for Chapter Selection (Requirement 6) -->
             <div id="chapter-selection" style="display: none;">
-                 <!-- Chapter list will be injected here by JS -->
+                <!-- Chapter list will be injected here by JS -->
             </div>
             <!-- Container for Results (used by both modes) -->
             <div id="result" style="display: none;">
@@ -293,10 +794,10 @@
 
         // --- Utility Functions ---
         function setLoadingState(button, loading, defaultText = '操作') {
-             if (!button) return;
-             button.disabled = loading;
-             button.textContent = loading ? '稍候...' : defaultText;
-             button.classList.toggle('loading-active', loading);
+            if (!button) return;
+            button.disabled = loading;
+            button.textContent = loading ? '稍候...' : defaultText;
+            button.classList.toggle('loading-active', loading);
         }
 
         // (Req 8) Extended resetUI
@@ -341,27 +842,27 @@
         }
 
         function displayError(message, container = statusDiv) {
-             console.error("Error:", message);
-             const safeMessage = escapeHtml(message);
-             if(container) {
-                 let displayMessage = safeMessage;
-                 // Add specific messages if needed, similar to before
-                 if (safeMessage.toLowerCase().includes("overloaded") || safeMessage.includes("503") || safeMessage.includes("429")) displayMessage = `AI 服務暫時忙碌，請稍後再試。<br><small>(${safeMessage})</small>`;
-                 else if (safeMessage.includes("AI API Error")) displayMessage = `與 AI 服務通信時發生錯誤，請稍後再試。<br><small>(${safeMessage})</small>`;
-                 else if (safeMessage.includes("無法獲取")) displayMessage = `無法加載所需信息，請刷新或稍後再試。<br><small>(${safeMessage})</small>`;
+            console.error("Error:", message);
+            const safeMessage = escapeHtml(message);
+            if (container) {
+                let displayMessage = safeMessage;
+                // Add specific messages if needed, similar to before
+                if (safeMessage.toLowerCase().includes("overloaded") || safeMessage.includes("503") || safeMessage.includes("429")) displayMessage = `AI 服務暫時忙碌，請稍後再試。<br><small>(${safeMessage})</small>`;
+                else if (safeMessage.includes("AI API Error")) displayMessage = `與 AI 服務通信時發生錯誤，請稍後再試。<br><small>(${safeMessage})</small>`;
+                else if (safeMessage.includes("無法獲取")) displayMessage = `無法加載所需信息，請刷新或稍後再試。<br><small>(${safeMessage})</small>`;
 
-                 container.innerHTML = `<div class="error-message">錯誤：${displayMessage}</div>`;
-                 container.style.display = 'block';
+                container.innerHTML = `<div class="error-message">錯誤：${displayMessage}</div>`;
+                container.style.display = 'block';
 
-                 // Scroll the relevant column into view
-                 if (container === resultDiv || container === chapterSelectionDiv) {
+                // Scroll the relevant column into view
+                if (container === resultDiv || container === chapterSelectionDiv) {
                     if (rightColumn) rightColumn.scrollTo({ top: 0, behavior: 'smooth' });
-                 } else if (container === statusDiv || container === questionsDiv || container === uploadSection) {
+                } else if (container === statusDiv || container === questionsDiv || container === uploadSection) {
                     if (leftColumn) leftColumn.scrollTo({ top: 0, behavior: 'smooth' });
-                 } else if (typeof container.scrollIntoView === 'function') {
+                } else if (typeof container.scrollIntoView === 'function') {
                     container.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                 }
-             }
+                }
+            }
         }
 
         function escapeHtml(unsafe) {
@@ -422,11 +923,11 @@
             try {
                 // Changed endpoint name
                 const response = await fetch('/api/start_gaokao_set');
-                 if (!response.ok) {
-                     let errorMsg = `HTTP 錯誤！狀態: ${response.status} ${response.statusText}`;
-                     try { const errorData = await response.json(); errorMsg = errorData.error || errorMsg; } catch (e) {}
-                     throw new Error(errorMsg);
-                 }
+                if (!response.ok) {
+                    let errorMsg = `HTTP 錯誤！狀態: ${response.status} ${response.statusText}`;
+                    try { const errorData = await response.json(); errorMsg = errorData.error || errorMsg; } catch (e) { }
+                    throw new Error(errorMsg);
+                }
                 const setData = await response.json();
                 if (!setData || !setData.setId || !setData.questions || setData.questions.length === 0) {
                     throw new Error('未能從後端獲取有效的“挑戰高考”題組數據。');
@@ -472,11 +973,11 @@
 
             try {
                 const response = await fetch('/api/get_chapters');
-                 if (!response.ok) {
+                if (!response.ok) {
                     let errorMsg = `HTTP 錯誤！狀態: ${response.status} ${response.statusText}`;
-                    try { const errorData = await response.json(); errorMsg = errorData.error || errorMsg; } catch (e) {}
+                    try { const errorData = await response.json(); errorMsg = errorData.error || errorMsg; } catch (e) { }
                     throw new Error(errorMsg);
-                 }
+                }
                 const chapterData = await response.json();
                 if (!chapterData || !Array.isArray(chapterData.chapters)) {
                     throw new Error('未能從後端獲取有效的篇目列表數據。');
@@ -507,12 +1008,12 @@
                 displayError(`獲取篇目列表時遇到問題: ${error.message || '未知錯誤'}`, chapterSelectionDiv); // Display error in chapter section
                 statusDiv.textContent = '狀態：加載篇目列表失敗';
             } finally {
-                 isLoading = false;
-                 // Reset loading states, keep buttons enabled
-                 setLoadingState(selectChapterBtn, false, '選篇挑戰');
-                 setLoadingState(gaokaoChallengeBtn, false, '挑戰高考');
-                 gaokaoChallengeBtn.disabled = false;
-                 selectChapterBtn.disabled = false;
+                isLoading = false;
+                // Reset loading states, keep buttons enabled
+                setLoadingState(selectChapterBtn, false, '選篇挑戰');
+                setLoadingState(gaokaoChallengeBtn, false, '挑戰高考');
+                gaokaoChallengeBtn.disabled = false;
+                selectChapterBtn.disabled = false;
             }
         });
 
@@ -532,44 +1033,44 @@
 
             try {
                 const response = await fetch(`/api/get_chapter_questions?order=${chapterOrder}`);
-                 if (!response.ok) {
+                if (!response.ok) {
                     let errorMsg = `HTTP 錯誤！狀態: ${response.status} ${response.statusText}`;
-                    try { const errorData = await response.json(); errorMsg = errorData.error || errorMsg; } catch (e) {}
+                    try { const errorData = await response.json(); errorMsg = errorData.error || errorMsg; } catch (e) { }
                     throw new Error(errorMsg);
-                 }
+                }
                 const chapterQuestionsData = await response.json();
                 if (!chapterQuestionsData || !chapterQuestionsData.chapterOrder || !Array.isArray(chapterQuestionsData.questions)) {
-                     throw new Error('未能從後端獲取有效的篇目題目數據。');
-                 }
+                    throw new Error('未能從後端獲取有效的篇目題目數據。');
+                }
 
-                 currentChallengeType = 'chapter';
-                 currentChallengeIdentifier = chapterQuestionsData.chapterOrder; // Store chapter order
-                 currentChapterTitle = chapterQuestionsData.chapterTitle || `篇目 ${currentChallengeIdentifier}`;
-                 statusDiv.textContent = `篇目《${currentChapterTitle}》題目已就緒！請提筆作答...`;
+                currentChallengeType = 'chapter';
+                currentChallengeIdentifier = chapterQuestionsData.chapterOrder; // Store chapter order
+                currentChapterTitle = chapterQuestionsData.chapterTitle || `篇目 ${currentChallengeIdentifier}`;
+                statusDiv.textContent = `篇目《${currentChapterTitle}》題目已就緒！請提筆作答...`;
 
-                 // Display the questions for the selected chapter
-                 const questionCount = chapterQuestionsData.questions.length;
-                 displayQuestions(chapterQuestionsData.questions, `《${currentChapterTitle}》 (${questionCount}題, 共 8 分)`); // Update title dynamically
+                // Display the questions for the selected chapter
+                const questionCount = chapterQuestionsData.questions.length;
+                displayQuestions(chapterQuestionsData.questions, `《${currentChapterTitle}》 (${questionCount}題, 共 8 分)`); // Update title dynamically
 
-                 // Hide chapter selection, clear results
-                 chapterSelectionDiv.style.display = 'none';
-                 chapterSelectionDiv.innerHTML = '';
-                 resultDiv.style.display = 'none';
-                 resultDiv.innerHTML = '';
+                // Hide chapter selection, clear results
+                chapterSelectionDiv.style.display = 'none';
+                chapterSelectionDiv.innerHTML = '';
+                resultDiv.style.display = 'none';
+                resultDiv.innerHTML = '';
 
             } catch (error) {
-                 console.error(`Error fetching questions for chapter ${chapterOrder}:`, error);
-                 displayError(`加載篇目 ${chapterOrder} 題目時遇到問題: ${error.message || '未知錯誤'}`);
-                 resetUI(); // Reset fully on error
+                console.error(`Error fetching questions for chapter ${chapterOrder}:`, error);
+                displayError(`加載篇目 ${chapterOrder} 題目時遇到問題: ${error.message || '未知錯誤'}`);
+                resetUI(); // Reset fully on error
             } finally {
                 isLoading = false;
-                 // Re-enable buttons after loading attempt (regardless of success/failure)
-                 setLoadingState(gaokaoChallengeBtn, false, '挑戰高考');
-                 setLoadingState(selectChapterBtn, false, '選篇挑戰');
-                 gaokaoChallengeBtn.disabled = false;
-                 selectChapterBtn.disabled = false;
-                 // Also re-enable chapter buttons if they exist
-                 document.querySelectorAll('.chapter-list-item button').forEach(btn => btn.disabled = false);
+                // Re-enable buttons after loading attempt (regardless of success/failure)
+                setLoadingState(gaokaoChallengeBtn, false, '挑戰高考');
+                setLoadingState(selectChapterBtn, false, '選篇挑戰');
+                gaokaoChallengeBtn.disabled = false;
+                selectChapterBtn.disabled = false;
+                // Also re-enable chapter buttons if they exist
+                document.querySelectorAll('.chapter-list-item button').forEach(btn => btn.disabled = false);
             }
         }
 
@@ -594,20 +1095,20 @@
                 const reader = new FileReader();
                 reader.onload = (e) => { imagePreview.src = e.target.result; imagePreview.style.display = 'block'; }
                 reader.readAsDataURL(file);
-             } catch (readError) {
-                 console.error("File reading error:", readError);
-                 displayError('無法讀取圖片文件進行預覽。', compressionInfo); return;
-             }
+            } catch (readError) {
+                console.error("File reading error:", readError);
+                displayError('無法讀取圖片文件進行預覽。', compressionInfo); return;
+            }
 
             compressionInfo.textContent = '正在優化圖片大小...';
             const options = { maxSizeMB: 1.5, maxWidthOrHeight: 1920, useWebWorker: true, preserveExif: false };
 
             try { // Compress
-                 if (typeof imageCompression !== 'function') throw new Error("Image compression library not loaded.");
+                if (typeof imageCompression !== 'function') throw new Error("Image compression library not loaded.");
                 compressedImageBlob = await imageCompression(file, options);
                 compressionInfo.textContent = `圖片已就緒 (大小: ${(compressedImageBlob.size / 1024 / 1024).toFixed(2)} MB)`;
                 // Enable submit button ONLY if a challenge is active
-                 submitBtn.disabled = !currentChallengeType;
+                submitBtn.disabled = !currentChallengeType;
             } catch (error) {
                 console.error('圖片壓縮失敗:', error);
                 displayError(`圖片壓縮處理失敗: ${error.message || '未知錯誤'}. 請嘗試其他圖片或刷新頁面。`, compressionInfo);
@@ -617,11 +1118,11 @@
 
         // --- Submit Button Listener (Handles both modes) ---
         submitBtn.addEventListener('click', async () => {
-             if (isSubmitting || !compressedImageBlob || !currentChallengeType || !currentChallengeIdentifier) {
-                 if (!compressedImageBlob) alert('錯誤：圖片尚未準備好。');
-                 if (!currentChallengeType) alert('錯誤：未選擇挑戰模式或未加載題目。');
-                 return;
-             }
+            if (isSubmitting || !compressedImageBlob || !currentChallengeType || !currentChallengeIdentifier) {
+                if (!compressedImageBlob) alert('錯誤：圖片尚未準備好。');
+                if (!currentChallengeType) alert('錯誤：未選擇挑戰模式或未加載題目。');
+                return;
+            }
 
             isSubmitting = true;
             setLoadingState(submitBtn, true, '正在提交評閱');
@@ -638,6 +1139,8 @@
             if (rightColumn) rightColumn.scrollTo({ top: 0, behavior: 'smooth' });
 
             const formData = new FormData();
+            // Bug Fix: Include persistent userId for rank tracking
+            formData.append('userId', getUserId());
             // Append the correct identifier based on challenge type
             if (currentChallengeType === 'gaokao') {
                 formData.append('setId', currentChallengeIdentifier);
@@ -655,7 +1158,7 @@
                 const response = await fetch('/api/submit', { method: 'POST', body: formData });
                 if (!response.ok) {
                     let errorMsg = `提交失敗！服務器響應: ${response.status} ${response.statusText}`;
-                    try { const errorData = await response.json(); errorMsg = errorData.error || errorMsg; } catch (e) {}
+                    try { const errorData = await response.json(); errorMsg = errorData.error || errorMsg; } catch (e) { }
                     throw new Error(errorMsg);
                 }
                 const resultData = await response.json();
@@ -669,7 +1172,7 @@
 
                 if (resultData.ocrIssue) {
                     let ocrDisplayError = escapeHtml(resultData.ocrIssue);
-                     if (ocrDisplayError.toLowerCase().includes("overloaded") || ocrDisplayError.includes("503") || ocrDisplayError.includes("429")) ocrDisplayError = `圖片識別服務暫時忙碌，部分結果可能不準確。<br><small>(${escapeHtml(resultData.ocrIssue)})</small>`;
+                    if (ocrDisplayError.toLowerCase().includes("overloaded") || ocrDisplayError.includes("503") || ocrDisplayError.includes("429")) ocrDisplayError = `圖片識別服務暫時忙碌，部分結果可能不準確。<br><small>(${escapeHtml(resultData.ocrIssue)})</small>`;
                     hintsHTML += `<p>圖片識別提示：${ocrDisplayError}</p>`;
                 }
                 if (hintsHTML) resultHTML += `<div class="processing-hints">${hintsHTML}</div>`;
@@ -686,10 +1189,10 @@
                         let scoreDisplay = ''; // Keep it clean unless needed
 
                         if (!res.success || recognized.startsWith('[')) {
-                             borderColor = 'var(--ghibli-warning-border)'; recognizedClass = 'unrecognized-text';
-                             const failureReason = res.error ? escapeHtml(res.error) : '處理失敗';
-                             tickOrCross = `<span class="incorrect-cross">✘</span> <span class="processing-failed-text">(${failureReason})</span>`;
-                         } else if (isCorrect) {
+                            borderColor = 'var(--ghibli-warning-border)'; recognizedClass = 'unrecognized-text';
+                            const failureReason = res.error ? escapeHtml(res.error) : '處理失敗';
+                            tickOrCross = `<span class="incorrect-cross">✘</span> <span class="processing-failed-text">(${failureReason})</span>`;
+                        } else if (isCorrect) {
                             borderColor = 'var(--ghibli-success-border)'; tickOrCross = '<span class="correct-tick">✔</span>';
                         } else {
                             borderColor = 'var(--ghibli-error-border)'; recognizedClass = 'incorrect-answer-text'; tickOrCross = '<span class="incorrect-cross">✘</span>';
@@ -707,51 +1210,51 @@
 
                 // Add rank/badge section only if it exists in response (i.e., for GaoKao challenge)
                 let rankBadgeHTML = '';
-                 if (resultData.badge || resultData.rank !== undefined) {
-                     rankBadgeHTML += `<div class="rank-badge-section">`;
-                     if (resultData.badge) rankBadgeHTML += `<div class="badge-display">本次獲得徽章: <span>${escapeHtml(resultData.badge)}</span></div>`;
-                     if (resultData.rank !== undefined) rankBadgeHTML += `<div class="rank-display">當前段位: ${escapeHtml(convertToChineseRankFrontend(resultData.rank))}階</div>`;
-                     rankBadgeHTML += `</div>`;
-                 }
-                 resultHTML += rankBadgeHTML; // Add rank/badge if available
+                if (resultData.badge || resultData.rank !== undefined) {
+                    rankBadgeHTML += `<div class="rank-badge-section">`;
+                    if (resultData.badge) rankBadgeHTML += `<div class="badge-display">本次獲得徽章: <span>${escapeHtml(resultData.badge)}</span></div>`;
+                    if (resultData.rank !== undefined) rankBadgeHTML += `<div class="rank-display">當前段位: ${escapeHtml(convertToChineseRankFrontend(resultData.rank))}階</div>`;
+                    rankBadgeHTML += `</div>`;
+                }
+                resultHTML += rankBadgeHTML; // Add rank/badge if available
 
-                 // Display results
-                 resultDiv.innerHTML = resultHTML;
+                // Display results
+                resultDiv.innerHTML = resultHTML;
 
-                 // Add feedback box
-                 const feedbackContainer = document.createElement('div');
-                 const isFullMarks = (resultData.totalScore === scoreTarget);
-                 if (resultData.feedback) {
-                     feedbackContainer.className = `feedback-box ${isFullMarks ? 'feedback-success' : 'feedback-fail'}`;
-                     const pre = document.createElement('pre');
-                     pre.textContent = resultData.feedback; // Backend includes warnings
-                     feedbackContainer.appendChild(pre);
-                     resultDiv.classList.toggle('full-marks-celebration', isFullMarks);
-                 } else {
+                // Add feedback box
+                const feedbackContainer = document.createElement('div');
+                const isFullMarks = (resultData.totalScore === scoreTarget);
+                if (resultData.feedback) {
+                    feedbackContainer.className = `feedback-box ${isFullMarks ? 'feedback-success' : 'feedback-fail'}`;
+                    const pre = document.createElement('pre');
+                    pre.textContent = resultData.feedback; // Backend includes warnings
+                    feedbackContainer.appendChild(pre);
+                    resultDiv.classList.toggle('full-marks-celebration', isFullMarks);
+                } else {
                     feedbackContainer.className = `feedback-box ${isFullMarks ? 'feedback-success' : 'feedback-fail'}`;
                     feedbackContainer.innerHTML = `<p>${escapeHtml(isFullMarks ? "滿分！表現不錯！" : `總分 ${resultData.totalScore ?? 'N/A'} / ${scoreTarget}。繼續努力！`)}</p>`;
                     resultDiv.classList.remove('full-marks-celebration');
-                 }
-                 resultDiv.appendChild(feedbackContainer); // Append feedback to results
+                }
+                resultDiv.appendChild(feedbackContainer); // Append feedback to results
 
-                 // Scroll results into view
-                 if (rightColumn) setTimeout(() => { rightColumn.scrollTo({ top: 0, behavior: 'smooth' }); }, 100);
+                // Scroll results into view
+                if (rightColumn) setTimeout(() => { rightColumn.scrollTo({ top: 0, behavior: 'smooth' }); }, 100);
 
-                 // Submission successful:
-                 // - Keep the left-side questions visible (do NOT hide/clear them)
-                 // - Reset only the upload widgets so the user can optionally resubmit with a clearer photo
-                 uploadSection.style.display = 'block';
-                 imageUploadInput.value = '';
-                 imagePreview.style.display = 'none';
-                 imagePreview.src = '#';
-                 compressedImageBlob = null;
-                 submitBtn.disabled = true;
-                 compressionInfo.textContent = '已批閱。如需重交，請重新選擇一張更清晰的照片。';
+                // Submission successful:
+                // - Keep the left-side questions visible (do NOT hide/clear them)
+                // - Reset only the upload widgets so the user can optionally resubmit with a clearer photo
+                uploadSection.style.display = 'block';
+                imageUploadInput.value = '';
+                imagePreview.style.display = 'none';
+                imagePreview.src = '#';
+                compressedImageBlob = null;
+                submitBtn.disabled = true;
+                compressionInfo.textContent = '已批閱。如需重交，請重新選擇一張更清晰的照片。';
 
 
             } catch (error) {
-                 console.error('Submit error:', error);
-                 displayError(`提交或處理失敗: ${error.message || '未知客戶端錯誤'}`, resultDiv); // Display error in result area
+                console.error('Submit error:', error);
+                displayError(`提交或處理失敗: ${error.message || '未知客戶端錯誤'}`, resultDiv); // Display error in result area
             } finally {
                 isSubmitting = false;
                 setLoadingState(submitBtn, false, '提交墨寶');
@@ -764,17 +1267,32 @@
         // --- Initial Setup ---
         resetUI(); // Start in the initial state
 
-        // --- Frontend Helper function for Chinese Rank (Same as before) ---
+        // --- Frontend Helper function for Chinese Rank (Bug Fix: Consistent with backend) ---
         function convertToChineseRankFrontend(rank) {
             rank = Number(rank);
-            if (isNaN(rank) || rank < 0) return "未知"; if (rank === 0) return "初窺";
+            if (isNaN(rank) || rank < 0) return "未知";
+            if (rank === 0) return "初窺門徑";  // Bug Fix: Match backend naming
             const nums = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
-            if (rank <= 10) return nums[rank]; if (rank < 20) return "十" + nums[rank - 10];
+            if (rank >= 10) return "登峰造極";  // Bug Fix: Add highest tier
+            if (rank >= 7) return `巔峰${nums[rank]}`;  // Bug Fix: High tier naming
+            if (rank <= 10) return nums[rank];
+            if (rank < 20) return "十" + nums[rank - 10];
             if (rank % 10 === 0 && rank < 100) return nums[Math.floor(rank / 10)] + "十";
             if (rank < 100) return nums[Math.floor(rank / 10)] + "十" + nums[rank % 10];
             return `宗師 ${rank}`;
         }
+
+        // --- Helper function to get/create persistent user ID ---
+        function getUserId() {
+            let userId = localStorage.getItem('moxie_user_id');
+            if (!userId) {
+                userId = crypto.randomUUID();
+                localStorage.setItem('moxie_user_id', userId);
+            }
+            return userId;
+        }
     </script>
 
 </body>
+
 </html>
