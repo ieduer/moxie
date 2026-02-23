@@ -795,14 +795,22 @@
         let chapterCacheTime = 0;
 
         const API_BASE_URL = '/api';
+        const API_FALLBACK_BASE_URL = 'https://moxie-8c2.pages.dev/api';
         const API_TIMEOUT_MS = 20000;
         const API_RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
         const CHAPTER_CACHE_TTL_MS = 5 * 60 * 1000;
 
         const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-        function buildApiUrl(endpoint) {
-            return `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+        function buildApiUrls(endpoint) {
+            const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+            const urls = [`${API_BASE_URL}${normalizedEndpoint}`];
+
+            if (window.location.hostname !== 'moxie-8c2.pages.dev') {
+                urls.push(`${API_FALLBACK_BASE_URL}${normalizedEndpoint}`);
+            }
+
+            return urls;
         }
 
         async function parseApiError(response) {
@@ -831,54 +839,62 @@
         async function requestJson(endpoint, fetchOptions = {}, requestOptions = {}) {
             const retries = Number.isInteger(requestOptions.retries) ? requestOptions.retries : 1;
             const timeoutMs = Number.isInteger(requestOptions.timeoutMs) ? requestOptions.timeoutMs : API_TIMEOUT_MS;
-            const url = buildApiUrl(endpoint);
+            const urls = buildApiUrls(endpoint);
             let lastError = null;
 
-            for (let attempt = 0; attempt <= retries; attempt++) {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+            for (const url of urls) {
+                for (let attempt = 0; attempt <= retries; attempt++) {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-                try {
-                    const response = await fetch(url, {
-                        ...fetchOptions,
-                        signal: controller.signal,
-                    });
+                    try {
+                        const response = await fetch(url, {
+                            ...fetchOptions,
+                            signal: controller.signal,
+                        });
 
-                    if (!response.ok) {
-                        let message = await parseApiError(response);
-                        if (!message) {
-                            message = `HTTP 錯誤！狀態: ${response.status} ${response.statusText}`;
+                        if (!response.ok) {
+                            let message = await parseApiError(response);
+                            if (!message) {
+                                message = `HTTP 錯誤！狀態: ${response.status} ${response.statusText}`;
+                            }
+                            if (response.status === 404) {
+                                message = `API 路徑不存在 (${endpoint})。請確認 Cloudflare Pages 部署包含 functions 目錄。`;
+                            }
+                            const error = new Error(message);
+                            error.status = response.status;
+                            error.url = url;
+                            throw error;
                         }
-                        if (response.status === 404) {
-                            message = `API 路徑不存在 (${endpoint})。請確認 Cloudflare Pages 部署包含 functions 目錄。`;
+
+                        return await response.json();
+                    } catch (error) {
+                        lastError = error;
+                        const status = typeof error.status === 'number' ? error.status : undefined;
+                        const isTimeout = error.name === 'AbortError';
+                        const retryable = isTimeout || (status !== undefined && API_RETRYABLE_STATUS.has(status));
+
+                        if (attempt < retries && retryable) {
+                            await sleep(350 * (attempt + 1));
+                            continue;
                         }
-                        const error = new Error(message);
-                        error.status = response.status;
-                        throw error;
-                    }
 
-                    return await response.json();
-                } catch (error) {
-                    lastError = error;
-                    const status = typeof error.status === 'number' ? error.status : undefined;
-                    const isTimeout = error.name === 'AbortError';
-                    const retryable = isTimeout || (status !== undefined && API_RETRYABLE_STATUS.has(status));
+                        if (isTimeout) {
+                            lastError = new Error(`請求超時（>${Math.round(timeoutMs / 1000)} 秒）`);
+                        }
 
-                    if (attempt < retries && retryable) {
-                        await sleep(350 * (attempt + 1));
-                        continue;
+                        break;
                     }
-
-                    if (isTimeout) {
-                        throw new Error(`請求超時（>${Math.round(timeoutMs / 1000)} 秒）`);
+                    finally {
+                        clearTimeout(timeoutId);
                     }
-                    throw error;
-                } finally {
-                    clearTimeout(timeoutId);
                 }
             }
 
-            throw lastError || new Error('API 請求失敗');
+            if (lastError?.message) {
+                throw lastError;
+            }
+            throw new Error('API 請求失敗');
         }
 
         // --- Utility Functions ---
