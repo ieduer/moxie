@@ -261,6 +261,21 @@
             justify-content: center;
         }
 
+        .experience-tips {
+            margin: 0 auto 20px;
+            padding: 12px 14px;
+            border: 1px solid var(--ghibli-border-color);
+            border-radius: 10px;
+            background-color: rgba(255, 255, 255, 0.65);
+            color: var(--ghibli-text-light);
+            font-size: 0.93em;
+            text-align: center;
+        }
+
+        .experience-tips p {
+            margin: 0;
+        }
+
         button {
             padding: 11px 24px;
             cursor: pointer;
@@ -305,6 +320,21 @@
 
         #submit-btn:hover:not(:disabled) {
             background-color: #a6bb97;
+        }
+
+        .secondary-btn {
+            background-color: var(--ghibli-accent1);
+            color: var(--ghibli-text);
+            border: 1px solid var(--ghibli-border-color);
+            box-shadow: none;
+            padding: 7px 14px;
+            border-radius: 14px;
+            font-size: 0.9em;
+        }
+
+        .secondary-btn:hover:not(:disabled) {
+            background-color: #d8cec1;
+            color: var(--ghibli-text);
         }
 
         #question-list {
@@ -367,6 +397,12 @@
             margin-bottom: 10px;
             font-weight: bold;
             color: var(--ghibli-primary-dark);
+        }
+
+        .upload-hint {
+            margin: 8px 0 12px;
+            font-size: 0.9em;
+            color: var(--ghibli-text-light);
         }
 
         input[type="file"] {
@@ -724,10 +760,14 @@
                 <button id="gaokao-challenge-btn">挑戰高考</button>
                 <button id="select-chapter-btn">選篇挑戰</button>
             </div>
-            <div id="status">狀態：選擇挑戰模式...</div>
+            <div class="experience-tips">
+                <p><strong>操作流程：</strong>先選模式 → 按順序分行作答 → 拍清晰照片 → 等待評閱</p>
+            </div>
+            <div id="status" role="status" aria-live="polite">狀態：選擇挑戰模式...</div>
             <div id="questions" style="display: none;">
                 <!-- Title will be updated dynamically -->
                 <h2 id="questions-title">筆墨伺候 (共 8 分)</h2>
+                <button id="back-to-chapters-btn" class="secondary-btn" style="display: none;">返回篇目列表</button>
                 <p style="text-align: center; color: var(--ghibli-text-light); font-style: italic;">
                     <strong style="color: var(--ghibli-error-text);">‼️勿寫題號，一題一行，不加標點‼️ </strong>
                 </p>
@@ -736,7 +776,8 @@
             <div id="upload-section" style="display: none;">
                 <h2>拍照上傳</h2>
                 <label for="image-upload" id="image-upload-label">選擇或拍攝照片:</label>
-                <input type="file" id="image-upload" name="image-upload" accept="image/*">
+                <p class="upload-hint">建議：光線充足、鏡頭平行紙面、答案完整入鏡。</p>
+                <input type="file" id="image-upload" name="image-upload" accept="image/*" capture="environment">
                 <div id="compression-info"></div>
                 <div id="image-preview-container">
                     <img id="image-preview" src="#" alt="圖片預覽">
@@ -779,6 +820,7 @@
         const chapterSelectionDiv = document.getElementById('chapter-selection'); // (Req 6) Get chapter selection div
         const gaokaoChallengeBtn = document.getElementById('gaokao-challenge-btn'); // (Req 4) Renamed button
         const selectChapterBtn = document.getElementById('select-chapter-btn'); // (Req 4) New button
+        const backToChaptersBtn = document.getElementById('back-to-chapters-btn');
         const submitBtn = document.getElementById('submit-btn');
         const rightColumn = document.querySelector('.right-column');
         const leftColumn = document.querySelector('.left-column'); // Cache left column too
@@ -893,6 +935,17 @@
             button.classList.toggle('loading-active', loading);
         }
 
+        function resetUploadWidgets(infoText = '') {
+            compressedImageBlob = null;
+            imagePreview.style.display = 'none';
+            imagePreview.src = '#';
+            imageUploadInput.value = '';
+            compressionInfo.textContent = infoText;
+            const compInfoError = compressionInfo.querySelector('.error-message');
+            if (compInfoError) compInfoError.remove();
+            submitBtn.disabled = true;
+        }
+
         // (Req 8) Extended resetUI
         function resetUI() {
             statusDiv.textContent = '狀態：選擇挑戰模式...';
@@ -911,18 +964,11 @@
             currentChallengeType = null;
             currentChallengeIdentifier = null;
             currentChapterTitle = '';
-            compressedImageBlob = null;
             isSubmitting = false;
             isLoading = false; // Reset general loading flag
 
-            imagePreview.style.display = 'none';
-            imagePreview.src = '#';
-            imageUploadInput.value = '';
-            compressionInfo.textContent = '';
-            const compInfoError = compressionInfo.querySelector('.error-message');
-            if (compInfoError) compInfoError.remove();
-
-            submitBtn.disabled = true;
+            resetUploadWidgets();
+            backToChaptersBtn.style.display = 'none';
 
             // Reset button states
             setLoadingState(gaokaoChallengeBtn, false, '挑戰高考');
@@ -994,6 +1040,7 @@
             questionsDiv.style.display = 'block';
             uploadSection.style.display = 'block'; // Show upload section
             submitBtn.disabled = !compressedImageBlob; // Enable submit only if image already selected+compressed
+            backToChaptersBtn.style.display = currentChallengeType === 'chapter' ? 'inline-block' : 'none';
 
             // Scroll left column to top
             if (leftColumn) leftColumn.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1022,8 +1069,36 @@
             });
         }
 
+        function openChapterSelection() {
+            if (!Array.isArray(chapterCache) || chapterCache.length === 0) {
+                displayError('篇目緩存已過期，請重新點擊「選篇挑戰」。');
+                return;
+            }
+
+            currentQuestions = [];
+            currentChallengeType = null;
+            currentChallengeIdentifier = null;
+            currentChapterTitle = '';
+            questionListDiv.innerHTML = '';
+            questionsDiv.style.display = 'none';
+            uploadSection.style.display = 'none';
+            backToChaptersBtn.style.display = 'none';
+            resultDiv.style.display = 'none';
+            resultDiv.innerHTML = '';
+            resultDiv.classList.remove('full-marks-celebration');
+            resetUploadWidgets();
+            chapterSelectionDiv.style.display = 'block';
+            renderChapterList(chapterCache);
+            statusDiv.textContent = '狀態：請選擇要挑戰的篇目';
+            if (rightColumn) rightColumn.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
 
         // --- Event Listeners ---
+
+        backToChaptersBtn.addEventListener('click', () => {
+            openChapterSelection();
+        });
 
         // (Req 5) Listener for "挑戰高考" button
         gaokaoChallengeBtn.addEventListener('click', async () => {
@@ -1118,11 +1193,21 @@
             if (!chapterOrder) return;
 
             isLoading = true;
-            resetUI(); // Reset UI before loading chapter questions
-            // Briefly disable all chapter buttons during load
+            // Keep chapter list visible to allow quick retry if fetch fails.
             document.querySelectorAll('.chapter-list-item button').forEach(btn => btn.disabled = true);
             statusDiv.textContent = `正在加載篇目 ${chapterOrder} 的題目...`;
             statusDiv.style.display = 'block';
+            questionsDiv.style.display = 'none';
+            uploadSection.style.display = 'none';
+            backToChaptersBtn.style.display = 'none';
+            resultDiv.style.display = 'none';
+            resultDiv.innerHTML = '';
+            resultDiv.classList.remove('full-marks-celebration');
+            resetUploadWidgets();
+            currentQuestions = [];
+            currentChallengeType = null;
+            currentChallengeIdentifier = null;
+            currentChapterTitle = '';
 
             try {
                 const chapterQuestionsData = await requestJson(
@@ -1151,8 +1236,9 @@
 
             } catch (error) {
                 console.error(`Error fetching questions for chapter ${chapterOrder}:`, error);
-                displayError(`加載篇目 ${chapterOrder} 題目時遇到問題: ${error.message || '未知錯誤'}`);
-                resetUI(); // Reset fully on error
+                statusDiv.textContent = `狀態：加載篇目 ${chapterOrder} 題目失敗，可重試`;
+                displayError(`加載篇目 ${chapterOrder} 題目時遇到問題: ${error.message || '未知錯誤'}`, statusDiv);
+                chapterSelectionDiv.style.display = 'block';
             } finally {
                 isLoading = false;
                 // Re-enable buttons after loading attempt (regardless of success/failure)
@@ -1169,12 +1255,7 @@
         // --- Image Upload and Compression (Same as before) ---
         imageUploadInput.addEventListener('change', async (event) => {
             const file = event.target.files[0];
-            compressedImageBlob = null;
-            submitBtn.disabled = true;
-            imagePreview.style.display = 'none';
-            compressionInfo.textContent = '';
-            const compInfoError = compressionInfo.querySelector('.error-message');
-            if (compInfoError) compInfoError.remove();
+            resetUploadWidgets();
 
             if (!file) { compressionInfo.textContent = '未選擇文件。'; return; }
             if (!file.type.startsWith('image/')) {
@@ -1196,22 +1277,31 @@
 
             try { // Compress
                 if (typeof imageCompression !== 'function') throw new Error("Image compression library not loaded.");
+                const originalSizeMb = file.size / 1024 / 1024;
                 compressedImageBlob = await imageCompression(file, options);
-                compressionInfo.textContent = `圖片已就緒 (大小: ${(compressedImageBlob.size / 1024 / 1024).toFixed(2)} MB)`;
+                const compressedSizeMb = compressedImageBlob.size / 1024 / 1024;
+                compressionInfo.textContent = `圖片已就緒（原始 ${originalSizeMb.toFixed(2)} MB → 壓縮 ${compressedSizeMb.toFixed(2)} MB）`;
                 // Enable submit button ONLY if a challenge is active
                 submitBtn.disabled = !currentChallengeType;
+                if (!currentChallengeType) {
+                    statusDiv.textContent = '圖片已就緒，請先選擇挑戰模式並加載題目。';
+                }
             } catch (error) {
                 console.error('圖片壓縮失敗:', error);
                 displayError(`圖片壓縮處理失敗: ${error.message || '未知錯誤'}. 請嘗試其他圖片或刷新頁面。`, compressionInfo);
-                compressedImageBlob = null; imagePreview.style.display = 'none'; imageUploadInput.value = '';
+                resetUploadWidgets();
             }
         });
 
         // --- Submit Button Listener (Handles both modes) ---
         submitBtn.addEventListener('click', async () => {
-            if (isSubmitting || !compressedImageBlob || !currentChallengeType || !currentChallengeIdentifier) {
-                if (!compressedImageBlob) alert('錯誤：圖片尚未準備好。');
-                if (!currentChallengeType) alert('錯誤：未選擇挑戰模式或未加載題目。');
+            if (isSubmitting) return;
+            if (!currentChallengeType || !currentChallengeIdentifier) {
+                displayError('請先選擇挑戰模式並加載題目。', statusDiv);
+                return;
+            }
+            if (!compressedImageBlob) {
+                displayError('請先上傳作答圖片，再提交評閱。', compressionInfo);
                 return;
             }
 
@@ -1329,12 +1419,7 @@
                 // - Keep the left-side questions visible (do NOT hide/clear them)
                 // - Reset only the upload widgets so the user can optionally resubmit with a clearer photo
                 uploadSection.style.display = 'block';
-                imageUploadInput.value = '';
-                imagePreview.style.display = 'none';
-                imagePreview.src = '#';
-                compressedImageBlob = null;
-                submitBtn.disabled = true;
-                compressionInfo.textContent = '已批閱。如需重交，請重新選擇一張更清晰的照片。';
+                resetUploadWidgets('已批閱。如需重交，請重新選擇一張更清晰的照片。');
 
 
             } catch (error) {
