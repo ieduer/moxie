@@ -46,6 +46,18 @@ interface ProcessedPoemEntry extends Omit<RawPoemEntry, `question${number}` | `r
     questions: { question: string; answer: string; year?: number }[];
 }
 
+interface ChapterSummary {
+    order: number;
+    title: string;
+}
+
+interface PreparedPoemData {
+    entries: ProcessedPoemEntry[];
+    chapterList: ChapterSummary[];
+    chapterMap: Map<number, ProcessedPoemEntry>;
+    allQuestions: PoemQuestion[];
+}
+
 
 // For a single generated question object used internally and in KV
 interface QuestionInfo {
@@ -136,6 +148,55 @@ function generateUniqueKey(prefix = 'answer', extension = '.png'): string {
 }
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+function normalizePathValue(pathValue: string | string[] | undefined): string {
+    if (Array.isArray(pathValue)) {
+        return pathValue
+            .map(part => part.trim())
+            .filter(Boolean)
+            .join('/');
+    }
+
+    if (typeof pathValue === 'string') {
+        return pathValue
+            .split('/')
+            .map(part => part.trim())
+            .filter(Boolean)
+            .join('/');
+    }
+
+    return '';
+}
+
+function resolveApiPath(params: Record<string, string | string[]>, pathname: string): string {
+    const fromParam = normalizePathValue(params.path);
+    if (fromParam) {
+        return decodeURIComponent(fromParam);
+    }
+
+    const segments = pathname
+        .split('/')
+        .map(part => part.trim())
+        .filter(Boolean);
+
+    if (segments[0] !== 'api') {
+        return '';
+    }
+
+    return decodeURIComponent(segments.slice(1).join('/'));
+}
+
+function getMissingBindings(env: Env, required: readonly (keyof Env)[]): (keyof Env)[] {
+    return required.filter(binding => !env[binding]);
+}
+
+function createMissingBindingsResponse(missing: (keyof Env)[], headers: Record<string, string>): Response {
+    console.error(`Server configuration error: Missing bindings/secrets -> ${missing.join(', ')}`);
+    return new Response(JSON.stringify({ error: "Server configuration error. Please contact administrator." }), {
+        status: 500,
+        headers,
+    });
+}
 
 // --- Gemini API Call Function (Unchanged) ---
 async function callGeminiAPI(apiKey: string, model: string, contents: GeminiContent[], generationConfig?: { maxOutputTokens?: number; temperature?: number; }): Promise<GeminiApiResponse> {
@@ -293,15 +354,52 @@ function transformRawPoemsData(rawData: RawPoemEntry[]): ProcessedPoemEntry[] {
     });
 }
 
-// Global variable to hold processed poem data after validation
-let processedPoemEntries: ProcessedPoemEntry[] = [];
+// Global cache to avoid repeated parsing and flattening on each request.
+let preparedPoemData: PreparedPoemData | null = null;
+
+function getPreparedPoemData(): PreparedPoemData {
+    if (preparedPoemData) {
+        return preparedPoemData;
+    }
+
+    if (!isValidPoemsData(poemsDataRaw)) {
+        throw new Error("poems.json data failed validation.");
+    }
+
+    const entries = transformRawPoemsData(poemsDataRaw);
+    const chapterList: ChapterSummary[] = entries
+        .map(entry => ({ order: entry.order, title: entry.title }))
+        .sort((a, b) => a.order - b.order);
+    const chapterMap = new Map<number, ProcessedPoemEntry>();
+    const allQuestions: PoemQuestion[] = [];
+
+    for (const entry of entries) {
+        chapterMap.set(entry.order, entry);
+        for (const q of entry.questions) {
+            allQuestions.push({
+                question: q.question,
+                answer: q.answer,
+                year: q.year,
+                sourceTitle: entry.title,
+                sourceAuthor: entry.author,
+                sourceDynasty: entry.dynasty,
+                sourceCategory: entry.category,
+                sourceOrder: entry.order,
+            });
+        }
+    }
+
+    preparedPoemData = { entries, chapterList, chapterMap, allQuestions };
+    console.log(`Successfully validated and prepared poems.json data. Entries: ${entries.length}, Questions: ${allQuestions.length}`);
+    return preparedPoemData;
+}
 
 // --- Main Request Handler ---
 export const onRequest: PagesFunction<Env> = async (context) => {
     console.log("onRequest: API request received");
     const { request, env, params } = context;
     const url = new URL(request.url);
-    const apiPath = (params.path as string[] || []).join('/');
+    const apiPath = resolveApiPath(params as Record<string, string | string[]>, url.pathname);
     // Extract query parameters for chapter selection
     const chapterOrderParam = url.searchParams.get('order');
 
@@ -318,32 +416,16 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
     console.log(`[${new Date().toISOString()}] Request: ${request.method} /api/${apiPath}${url.search}`);
 
-    if (!env.IMAGES_BUCKET || !env.GEMINI_API_KEY || !env.SESSION_KV) {
-        console.error("FATAL: Server configuration error: Missing required Cloudflare bindings (R2, KV) or secrets (GEMINI_API_KEY).");
-        return new Response(JSON.stringify({ error: "Server configuration error. Please contact administrator." }), { status: 500, headers: baseHeaders });
-    }
-
-    // --- **DATA VALIDATION & PROCESSING (ONCE)** --- (Requirement 2)
-    // Only process if not already done
-    if (processedPoemEntries.length === 0) {
-        if (isValidPoemsData(poemsDataRaw)) {
-            processedPoemEntries = transformRawPoemsData(poemsDataRaw);
-            console.log(`Successfully validated and processed poems.json data. Found ${processedPoemEntries.length} entries.`);
-        } else {
-            console.error("FATAL: poems.json data failed validation. Check the file structure and content.");
-            return new Response(JSON.stringify({ error: "內部題庫數據格式錯誤，無法提供服務。" }), { status: 500, headers: baseHeaders });
-        }
-    }
-
     try {
         // --- API Routing ---
 
         if (apiPath === 'hello' && request.method === 'GET') {
+            const poemData = getPreparedPoemData();
             const dataInfo = {
                 message: "Backend is running.",
                 status: "OK",
                 timestamp: new Date().toISOString(),
-                poemEntriesLoaded: processedPoemEntries.length, // Report count from processed data
+                poemEntriesLoaded: poemData.entries.length,
                 modelsUsed: { vision: GEMINI_VISION_MODEL, text: GEMINI_TEXT_MODEL },
                 maxFeedbackTokens: MAX_FEEDBACK_TOKENS
             };
@@ -352,33 +434,22 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
         // --- Route for "挑戰高考" --- (Requirement 5)
         if (apiPath === 'start_gaokao_set' && request.method === 'GET') {
+            const missingBindings = getMissingBindings(env, ['SESSION_KV'] as const);
+            if (missingBindings.length > 0) {
+                return createMissingBindingsResponse(missingBindings, baseHeaders);
+            }
+
             console.log("Processing /api/start_gaokao_set request using processed poems.json data");
+            const poemData = getPreparedPoemData();
 
-            // Flatten all questions from all entries
-            const allIndividualQuestions: PoemQuestion[] = [];
-            processedPoemEntries.forEach(entry => {
-                entry.questions.forEach(q => {
-                    allIndividualQuestions.push({
-                        question: q.question,
-                        answer: q.answer,
-                        year: q.year,
-                        sourceTitle: entry.title,
-                        sourceAuthor: entry.author,
-                        sourceDynasty: entry.dynasty,
-                        sourceCategory: entry.category,
-                        sourceOrder: entry.order
-                    });
-                });
-            });
-
-            if (allIndividualQuestions.length < MAX_QUESTIONS_PER_GAOKAO_SET) {
-                throw new Error(`題庫中的總題目數量 (${allIndividualQuestions.length}) 不足 ${MAX_QUESTIONS_PER_GAOKAO_SET} 道，無法出題。`);
+            if (poemData.allQuestions.length < MAX_QUESTIONS_PER_GAOKAO_SET) {
+                throw new Error(`題庫中的總題目數量 (${poemData.allQuestions.length}) 不足 ${MAX_QUESTIONS_PER_GAOKAO_SET} 道，無法出題。`);
             }
 
             const setId = crypto.randomUUID();
 
-            // Select random individual questions from the flattened list
-            const selectedQuestions = getRandomItems(allIndividualQuestions, MAX_QUESTIONS_PER_GAOKAO_SET);
+            // Select random individual questions from the pre-flattened pool.
+            const selectedQuestions = getRandomItems(poemData.allQuestions, MAX_QUESTIONS_PER_GAOKAO_SET);
 
             // Map the selected questions to the QuestionInfo format for KV storage
             const generatedQuestions: QuestionInfo[] = selectedQuestions.map((poemQ) => {
@@ -414,11 +485,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         // --- Route to get chapter list for "選篇挑戰" --- (Requirement 6)
         if (apiPath === 'get_chapters' && request.method === 'GET') {
             console.log("Processing /api/get_chapters request");
-            const chapterList = processedPoemEntries
-                .map(entry => ({ order: entry.order, title: entry.title }))
-                .sort((a, b) => a.order - b.order); // Sort by order
+            const poemData = getPreparedPoemData();
 
-            return new Response(JSON.stringify({ chapters: chapterList }), { headers: baseHeaders });
+            return new Response(JSON.stringify({ chapters: poemData.chapterList }), { headers: baseHeaders });
         }
 
         // --- Route to get questions for a specific chapter --- (Requirement 7)
@@ -432,7 +501,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 return new Response(JSON.stringify({ error: '請求無效：篇目順序號 (order) 必須是數字。' }), { status: 400, headers: baseHeaders });
             }
 
-            const chapterEntry = processedPoemEntries.find(entry => entry.order === order);
+            const poemData = getPreparedPoemData();
+            const chapterEntry = poemData.chapterMap.get(order);
 
             if (!chapterEntry) {
                 return new Response(JSON.stringify({ error: `未找到順序號為 ${order} 的篇目。` }), { status: 404, headers: baseHeaders });
@@ -459,6 +529,11 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
         // --- '/submit' route (Handles both GaoKao and Chapter challenges) ---
         if (apiPath === 'submit' && request.method === 'POST') {
+            const missingBindings = getMissingBindings(env, ['IMAGES_BUCKET', 'GEMINI_API_KEY', 'SESSION_KV'] as const);
+            if (missingBindings.length > 0) {
+                return createMissingBindingsResponse(missingBindings, baseHeaders);
+            }
+
             console.log("Processing /api/submit request");
 
             // --- Request Parsing and Validation ---
@@ -520,7 +595,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 if (isNaN(order)) {
                     return new Response(JSON.stringify({ error: '請求無效：篇目順序號 (chapterOrder) 必須是數字。' }), { status: 400, headers: baseHeaders });
                 }
-                const chapterEntry = processedPoemEntries.find(entry => entry.order === order);
+                const poemData = getPreparedPoemData();
+                const chapterEntry = poemData.chapterMap.get(order);
                 if (!chapterEntry) {
                     return new Response(JSON.stringify({ error: `提交失敗：未找到順序號為 ${order} 的篇目數據。` }), { status: 404, headers: baseHeaders });
                 }

@@ -791,6 +791,95 @@
         let compressedImageBlob = null;
         let isSubmitting = false;
         let isLoading = false; // General loading state flag
+        let chapterCache = null;
+        let chapterCacheTime = 0;
+
+        const API_BASE_URL = '/api';
+        const API_TIMEOUT_MS = 20000;
+        const API_RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
+        const CHAPTER_CACHE_TTL_MS = 5 * 60 * 1000;
+
+        const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+        function buildApiUrl(endpoint) {
+            return `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+        }
+
+        async function parseApiError(response) {
+            const contentType = response.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+                try {
+                    const payload = await response.json();
+                    if (payload && typeof payload.error === 'string') {
+                        return payload.error;
+                    }
+                } catch (error) {
+                    console.warn('Failed to parse API error JSON:', error);
+                }
+            }
+
+            try {
+                const text = await response.text();
+                const plainText = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+                return plainText ? plainText.slice(0, 180) : '';
+            } catch (error) {
+                console.warn('Failed to read API error text:', error);
+                return '';
+            }
+        }
+
+        async function requestJson(endpoint, fetchOptions = {}, requestOptions = {}) {
+            const retries = Number.isInteger(requestOptions.retries) ? requestOptions.retries : 1;
+            const timeoutMs = Number.isInteger(requestOptions.timeoutMs) ? requestOptions.timeoutMs : API_TIMEOUT_MS;
+            const url = buildApiUrl(endpoint);
+            let lastError = null;
+
+            for (let attempt = 0; attempt <= retries; attempt++) {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+                try {
+                    const response = await fetch(url, {
+                        ...fetchOptions,
+                        signal: controller.signal,
+                    });
+
+                    if (!response.ok) {
+                        let message = await parseApiError(response);
+                        if (!message) {
+                            message = `HTTP 錯誤！狀態: ${response.status} ${response.statusText}`;
+                        }
+                        if (response.status === 404) {
+                            message = `API 路徑不存在 (${endpoint})。請確認 Cloudflare Pages 部署包含 functions 目錄。`;
+                        }
+                        const error = new Error(message);
+                        error.status = response.status;
+                        throw error;
+                    }
+
+                    return await response.json();
+                } catch (error) {
+                    lastError = error;
+                    const status = typeof error.status === 'number' ? error.status : undefined;
+                    const isTimeout = error.name === 'AbortError';
+                    const retryable = isTimeout || (status !== undefined && API_RETRYABLE_STATUS.has(status));
+
+                    if (attempt < retries && retryable) {
+                        await sleep(350 * (attempt + 1));
+                        continue;
+                    }
+
+                    if (isTimeout) {
+                        throw new Error(`請求超時（>${Math.round(timeoutMs / 1000)} 秒）`);
+                    }
+                    throw error;
+                } finally {
+                    clearTimeout(timeoutId);
+                }
+            }
+
+            throw lastError || new Error('API 請求失敗');
+        }
 
         // --- Utility Functions ---
         function setLoadingState(button, loading, defaultText = '操作') {
@@ -907,6 +996,28 @@
             else questionsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
 
+        function renderChapterList(chapters) {
+            chapterSelectionDiv.innerHTML = '<h2>選擇篇目開始挑戰</h2><ul class="chapter-list"></ul>';
+            const listElement = chapterSelectionDiv.querySelector('.chapter-list');
+            if (!listElement) return;
+
+            if (!chapters || chapters.length === 0) {
+                listElement.innerHTML = '<li>未能加載到任何篇目。</li>';
+                return;
+            }
+
+            chapters.forEach(chapter => {
+                const listItem = document.createElement('li');
+                listItem.classList.add('chapter-list-item');
+                const button = document.createElement('button');
+                button.dataset.order = chapter.order;
+                button.innerHTML = `<span class="chapter-order">${escapeHtml(chapter.order)}.</span> <span class="chapter-title">${escapeHtml(chapter.title)}</span>`;
+                button.addEventListener('click', handleChapterSelection);
+                listItem.appendChild(button);
+                listElement.appendChild(listItem);
+            });
+        }
+
 
         // --- Event Listeners ---
 
@@ -921,14 +1032,7 @@
             statusDiv.style.display = 'block';
 
             try {
-                // Changed endpoint name
-                const response = await fetch('/api/start_gaokao_set');
-                if (!response.ok) {
-                    let errorMsg = `HTTP 錯誤！狀態: ${response.status} ${response.statusText}`;
-                    try { const errorData = await response.json(); errorMsg = errorData.error || errorMsg; } catch (e) { }
-                    throw new Error(errorMsg);
-                }
-                const setData = await response.json();
+                const setData = await requestJson('/start_gaokao_set', { method: 'GET' }, { retries: 1 });
                 if (!setData || !setData.setId || !setData.questions || setData.questions.length === 0) {
                     throw new Error('未能從後端獲取有效的“挑戰高考”題組數據。');
                 }
@@ -972,37 +1076,22 @@
             if (rightColumn) rightColumn.scrollTo({ top: 0, behavior: 'smooth' });
 
             try {
-                const response = await fetch('/api/get_chapters');
-                if (!response.ok) {
-                    let errorMsg = `HTTP 錯誤！狀態: ${response.status} ${response.statusText}`;
-                    try { const errorData = await response.json(); errorMsg = errorData.error || errorMsg; } catch (e) { }
-                    throw new Error(errorMsg);
-                }
-                const chapterData = await response.json();
-                if (!chapterData || !Array.isArray(chapterData.chapters)) {
+                const hasCache = Array.isArray(chapterCache) && (Date.now() - chapterCacheTime) < CHAPTER_CACHE_TTL_MS;
+                const chapters = hasCache
+                    ? chapterCache
+                    : (await requestJson('/get_chapters', { method: 'GET' }, { retries: 1 })).chapters;
+
+                if (!Array.isArray(chapters)) {
                     throw new Error('未能從後端獲取有效的篇目列表數據。');
+                }
+                if (!hasCache) {
+                    chapterCache = chapters;
+                    chapterCacheTime = Date.now();
                 }
 
                 // (Req 9) Display chapter list
                 statusDiv.textContent = '狀態：請選擇要挑戰的篇目';
-                chapterSelectionDiv.innerHTML = '<h2>選擇篇目開始挑戰</h2><ul class="chapter-list"></ul>';
-                const listElement = chapterSelectionDiv.querySelector('.chapter-list');
-
-                if (chapterData.chapters.length === 0) {
-                    listElement.innerHTML = '<li>未能加載到任何篇目。</li>';
-                } else {
-                    chapterData.chapters.forEach(chapter => {
-                        const listItem = document.createElement('li');
-                        listItem.classList.add('chapter-list-item');
-                        const button = document.createElement('button');
-                        button.dataset.order = chapter.order; // Store order in data attribute
-                        button.innerHTML = `<span class="chapter-order">${escapeHtml(chapter.order)}.</span> <span class="chapter-title">${escapeHtml(chapter.title)}</span>`;
-                        // Add click listener to each chapter button (Req 7 - part 1)
-                        button.addEventListener('click', handleChapterSelection);
-                        listItem.appendChild(button);
-                        listElement.appendChild(listItem);
-                    });
-                }
+                renderChapterList(chapters);
             } catch (error) {
                 console.error('Error fetching chapters:', error);
                 displayError(`獲取篇目列表時遇到問題: ${error.message || '未知錯誤'}`, chapterSelectionDiv); // Display error in chapter section
@@ -1032,13 +1121,11 @@
             statusDiv.style.display = 'block';
 
             try {
-                const response = await fetch(`/api/get_chapter_questions?order=${chapterOrder}`);
-                if (!response.ok) {
-                    let errorMsg = `HTTP 錯誤！狀態: ${response.status} ${response.statusText}`;
-                    try { const errorData = await response.json(); errorMsg = errorData.error || errorMsg; } catch (e) { }
-                    throw new Error(errorMsg);
-                }
-                const chapterQuestionsData = await response.json();
+                const chapterQuestionsData = await requestJson(
+                    `/get_chapter_questions?order=${encodeURIComponent(chapterOrder)}`,
+                    { method: 'GET' },
+                    { retries: 1 }
+                );
                 if (!chapterQuestionsData || !chapterQuestionsData.chapterOrder || !Array.isArray(chapterQuestionsData.questions)) {
                     throw new Error('未能從後端獲取有效的篇目題目數據。');
                 }
@@ -1155,13 +1242,7 @@
             formData.append('handwritingImage', compressedImageBlob, filename);
 
             try {
-                const response = await fetch('/api/submit', { method: 'POST', body: formData });
-                if (!response.ok) {
-                    let errorMsg = `提交失敗！服務器響應: ${response.status} ${response.statusText}`;
-                    try { const errorData = await response.json(); errorMsg = errorData.error || errorMsg; } catch (e) { }
-                    throw new Error(errorMsg);
-                }
-                const resultData = await response.json();
+                const resultData = await requestJson('/submit', { method: 'POST', body: formData }, { retries: 0, timeoutMs: 120000 });
                 console.log("Result Data Received:", resultData);
 
                 // --- Render Results ---
