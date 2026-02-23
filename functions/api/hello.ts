@@ -1,1 +1,1 @@
-export { onRequest } from './[[path]]';
+export { onRequest } from './_handler';
