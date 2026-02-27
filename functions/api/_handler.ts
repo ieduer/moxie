@@ -317,7 +317,7 @@ function createHttpError(status: number, message: string): Error & { status: num
 }
 
 function isAllowedOrigin(origin: string | null): boolean {
-    if (!origin) return true;
+    if (!origin) return false;
     return ALLOWED_ORIGIN_PATTERNS.some(pattern => pattern.test(origin));
 }
 
@@ -816,7 +816,7 @@ async function getLeaderboardBundle(kv: KVNamespace, limit: number): Promise<{
 // --- Gemini API Call Function (Unchanged) ---
 async function callGeminiAPI(apiKey: string, model: string, contents: GeminiContent[], generationConfig?: { maxOutputTokens?: number; temperature?: number; }): Promise<GeminiApiResponse> {
     // ... (Implementation unchanged from the provided snippet, including retry logic)
-    const url = `${GEMINI_API_BASE_URL}${model}:generateContent?key=${apiKey}`;
+    const url = `${GEMINI_API_BASE_URL}${model}:generateContent`;
     let lastError: any = null;
 
     for (let attempt = 0; attempt <= API_RETRY_COUNT; attempt++) {
@@ -826,7 +826,10 @@ async function callGeminiAPI(apiKey: string, model: string, contents: GeminiCont
         try {
             response = await fetch(url, { // Assign to outer response
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-goog-api-key': apiKey,
+                },
                 body: JSON.stringify({ contents, generationConfig }),
             });
             console.log(`Gemini API response status: ${response.status}`);
@@ -1038,14 +1041,10 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         // --- API Routing ---
 
         if (apiPath === 'hello' && request.method === 'GET') {
-            const poemData = getPreparedPoemData();
             const dataInfo = {
                 message: "Backend is running.",
                 status: "OK",
                 timestamp: new Date().toISOString(),
-                poemEntriesLoaded: poemData.entries.length,
-                modelsUsed: { vision: GEMINI_VISION_MODEL, text: GEMINI_TEXT_MODEL },
-                maxFeedbackTokens: MAX_FEEDBACK_TOKENS
             };
             return new Response(JSON.stringify(dataInfo), { headers: baseHeaders });
         }
@@ -1831,7 +1830,6 @@ ${ocrError ? `\n圖片識別提示: ${ocrError}` : ''}
                 scoreTarget: scoreTarget, // Send the target score back
                 results: results,
                 feedback: feedback,
-                r2Key: r2Key,
                 ocrIssue: ocrError,
                 feedbackIssue: feedbackErrorMsg,
                 pointsAwarded,

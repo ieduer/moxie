@@ -614,6 +614,12 @@
             color: var(--ghibli-warning-text);
         }
 
+        .processing-hints.points-gain {
+            background-color: var(--ghibli-success-bg);
+            border-color: var(--ghibli-success-border);
+            color: var(--ghibli-success-text);
+        }
+
         .processing-hints p {
             margin: 5px 0;
             font-weight: bold;
@@ -1134,6 +1140,12 @@
                     if (isTimeout) {
                         throw new Error(`請求超時（>${Math.round(timeoutMs / 1000)} 秒）`);
                     }
+                    if (error instanceof TypeError || /Failed to fetch|NetworkError/i.test(error?.message || '')) {
+                        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+                            throw new Error('網絡連接已中斷，請檢查網絡後重試。');
+                        }
+                        throw new Error('網絡請求失敗，請稍後再試。');
+                    }
                     throw error;
                 } finally {
                     clearTimeout(timeoutId);
@@ -1186,6 +1198,15 @@
             loginBtn.style.display = loggedIn ? 'none' : '';
             logoutBtn.style.display = loggedIn ? '' : 'none';
             passwordChangePanel.style.display = loggedIn ? '' : 'none';
+            if (loggedIn) {
+                if (!isLoading && !isSubmitting) {
+                    gaokaoChallengeBtn.disabled = false;
+                    selectChapterBtn.disabled = false;
+                }
+            } else {
+                gaokaoChallengeBtn.disabled = true;
+                selectChapterBtn.disabled = true;
+            }
             if (!loggedIn) {
                 oldPasswordInput.value = '';
                 newPasswordInput.value = '';
@@ -1387,8 +1408,9 @@
             setLoadingState(submitBtn, false, '提交墨寶');
 
             // Ensure other buttons are re-enabled if they were disabled by a loading state
-            gaokaoChallengeBtn.disabled = false;
-            selectChapterBtn.disabled = false;
+            const canUseChallenges = !!(currentUser && currentUser.token);
+            gaokaoChallengeBtn.disabled = !canUseChallenges;
+            selectChapterBtn.disabled = !canUseChallenges;
         }
 
         function displayError(message, container = statusDiv) {
@@ -1400,8 +1422,14 @@
                 if (safeMessage.toLowerCase().includes("overloaded") || safeMessage.includes("503") || safeMessage.includes("429")) displayMessage = `AI 服務暫時忙碌，請稍後再試。<br><small>(${safeMessage})</small>`;
                 else if (safeMessage.includes("AI API Error")) displayMessage = `與 AI 服務通信時發生錯誤，請稍後再試。<br><small>(${safeMessage})</small>`;
                 else if (safeMessage.includes("無法獲取")) displayMessage = `無法加載所需信息，請刷新或稍後再試。<br><small>(${safeMessage})</small>`;
-
-                container.innerHTML = `<div class="error-message">錯誤：${displayMessage}</div>`;
+                const errorHtml = `<div class="error-message">錯誤：${displayMessage}</div>`;
+                if (container === compressionInfo) {
+                    const existingError = container.querySelector('.error-message');
+                    if (existingError) existingError.remove();
+                    container.insertAdjacentHTML('beforeend', errorHtml);
+                } else {
+                    container.innerHTML = errorHtml;
+                }
                 container.style.display = 'block';
 
                 // Scroll the relevant column into view
@@ -1532,7 +1560,7 @@
                 statusDiv.textContent = '狀態：已退出登錄。';
                 return;
             }
-            setLoadingState(logoutBtn, true, '登出中');
+            setLoadingState(logoutBtn, true, '登出');
             try {
                 await requestJson('/logout', { method: 'POST', headers: getAuthHeaders() }, { retries: 0 });
             } catch (error) {
@@ -1620,7 +1648,7 @@
                 }
 
                 currentChallengeType = 'gaokao';
-                currentChallengeIdentifier = setData.setId; // Store the setId
+                currentChallengeIdentifier = String(setData.setId); // Store the setId as string
                 const expiresAt = Number(setData.expiresAt || 0);
                 if (Number.isFinite(expiresAt) && expiresAt > 0) {
                     const expireTimeLabel = new Date(expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -1641,8 +1669,9 @@
                 // Reset loading states, keep buttons enabled
                 setLoadingState(gaokaoChallengeBtn, false, '挑戰高考');
                 setLoadingState(selectChapterBtn, false, '選篇挑戰');
-                gaokaoChallengeBtn.disabled = false;
-                selectChapterBtn.disabled = false;
+                const canUseChallenges = !!(currentUser && currentUser.token);
+                gaokaoChallengeBtn.disabled = !canUseChallenges;
+                selectChapterBtn.disabled = !canUseChallenges;
             }
         });
 
@@ -1686,7 +1715,9 @@
                 console.error('Error fetching chapters:', error);
                 if (error?.status === 401) {
                     clearCurrentUser();
-                    statusDiv.textContent = '狀態：登錄已過期，請重新登錄。';
+                    displayError('登錄已過期，請重新登錄。', statusDiv);
+                    chapterSelectionDiv.style.display = 'block';
+                    return;
                 }
                 displayError(`獲取篇目列表時遇到問題: ${error.message || '未知錯誤'}`, chapterSelectionDiv); // Display error in chapter section
                 statusDiv.textContent = '狀態：加載篇目列表失敗';
@@ -1695,8 +1726,9 @@
                 // Reset loading states, keep buttons enabled
                 setLoadingState(selectChapterBtn, false, '選篇挑戰');
                 setLoadingState(gaokaoChallengeBtn, false, '挑戰高考');
-                gaokaoChallengeBtn.disabled = false;
-                selectChapterBtn.disabled = false;
+                const canUseChallenges = !!(currentUser && currentUser.token);
+                gaokaoChallengeBtn.disabled = !canUseChallenges;
+                selectChapterBtn.disabled = !canUseChallenges;
             }
         });
 
@@ -1730,12 +1762,13 @@
                     { method: 'GET', headers: getAuthHeaders() },
                     { retries: 1 }
                 );
-                if (!chapterQuestionsData || !chapterQuestionsData.chapterOrder || !Array.isArray(chapterQuestionsData.questions)) {
+                const hasChapterOrder = chapterQuestionsData && chapterQuestionsData.chapterOrder !== undefined && chapterQuestionsData.chapterOrder !== null;
+                if (!chapterQuestionsData || !hasChapterOrder || !Array.isArray(chapterQuestionsData.questions)) {
                     throw new Error('未能從後端獲取有效的篇目題目數據。');
                 }
 
                 currentChallengeType = 'chapter';
-                currentChallengeIdentifier = chapterQuestionsData.chapterOrder; // Store chapter order
+                currentChallengeIdentifier = String(chapterQuestionsData.chapterOrder); // Store chapter order as string
                 currentChapterTitle = chapterQuestionsData.chapterTitle || `篇目 ${currentChallengeIdentifier}`;
                 statusDiv.textContent = `篇目《${currentChapterTitle}》題目已就緒！請提筆作答...`;
 
@@ -1754,7 +1787,9 @@
                 console.error(`Error fetching questions for chapter ${chapterOrder}:`, error);
                 if (error?.status === 401) {
                     clearCurrentUser();
-                    statusDiv.textContent = '狀態：登錄已過期，請重新登錄。';
+                    displayError('登錄已過期，請重新登錄。', statusDiv);
+                    chapterSelectionDiv.style.display = 'block';
+                    return;
                 }
                 statusDiv.textContent = `狀態：加載篇目 ${chapterOrder} 題目失敗，可重試`;
                 displayError(`加載篇目 ${chapterOrder} 題目時遇到問題: ${error.message || '未知錯誤'}`, statusDiv);
@@ -1764,8 +1799,9 @@
                 // Re-enable buttons after loading attempt (regardless of success/failure)
                 setLoadingState(gaokaoChallengeBtn, false, '挑戰高考');
                 setLoadingState(selectChapterBtn, false, '選篇挑戰');
-                gaokaoChallengeBtn.disabled = false;
-                selectChapterBtn.disabled = false;
+                const canUseChallenges = !!(currentUser && currentUser.token);
+                gaokaoChallengeBtn.disabled = !canUseChallenges;
+                selectChapterBtn.disabled = !canUseChallenges;
                 // Also re-enable chapter buttons if they exist
                 document.querySelectorAll('.chapter-list-item button').forEach(btn => btn.disabled = false);
             }
@@ -1821,7 +1857,7 @@
                 usernameInput.focus();
                 return;
             }
-            if (!currentChallengeType || !currentChallengeIdentifier) {
+            if (!currentChallengeType || String(currentChallengeIdentifier ?? '').trim() === '') {
                 displayError('請先選擇挑戰模式並加載題目。', statusDiv);
                 return;
             }
@@ -1843,6 +1879,7 @@
                 '正在比對評分...',
                 '正在生成反饋...',
             ];
+            const submitProgressIntervalMs = 8000;
             let progressIndex = 0;
             resultDiv.innerHTML = `<div class="loading">${progressPhases[progressIndex]}</div>`;
             resultDiv.style.display = 'block';
@@ -1852,7 +1889,7 @@
             submitProgressTimer = setInterval(() => {
                 progressIndex = Math.min(progressIndex + 1, progressPhases.length - 1);
                 resultDiv.innerHTML = `<div class="loading">${progressPhases[progressIndex]}</div>`;
-            }, 18000);
+            }, submitProgressIntervalMs);
 
             if (rightColumn) rightColumn.scrollTo({ top: 0, behavior: 'smooth' });
 
@@ -1924,7 +1961,7 @@
 
                 if (typeof resultData.pointsAwarded === 'number') {
                     const pointsDisplay = Math.round(Number(resultData.pointsAwarded));
-                    resultHTML += `<div class="processing-hints"><p>本次積分 +${pointsDisplay}</p></div>`;
+                    resultHTML += `<div class="processing-hints points-gain"><p>本次積分 +${pointsDisplay}</p></div>`;
                 }
 
                 let rankBadgeHTML = '';
@@ -1969,6 +2006,8 @@
                 // Require selecting a new challenge after each successful submission.
                 currentChallengeType = null;
                 currentChallengeIdentifier = null;
+                questionsDiv.style.display = 'none';
+                backToChaptersBtn.style.display = 'none';
                 uploadSection.style.display = 'none';
                 resetUploadWidgets();
                 statusDiv.textContent = '狀態：本輪評閱已完成。請重新選擇挑戰模式開始下一輪。';
@@ -2022,8 +2061,9 @@
                     submitBtn.disabled = true;
                 }
                 // Re-enable main challenge buttons after submission attempt
-                gaokaoChallengeBtn.disabled = false;
-                selectChapterBtn.disabled = false;
+                const canUseChallenges = !!(currentUser && currentUser.token);
+                gaokaoChallengeBtn.disabled = !canUseChallenges;
+                selectChapterBtn.disabled = !canUseChallenges;
             }
         });
 
