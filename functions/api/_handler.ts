@@ -766,7 +766,13 @@ async function readLeaderboardScope(
 ): Promise<LeaderboardEntry[]> {
     const safeLimit = Math.max(1, Math.min(limit, LEADERBOARD_TOP_LIMIT));
     const cacheKey = getLeaderboardScopeCacheKey(scope, period, safeLimit, version);
-    const cached = await getJsonKV<LeaderboardEntry[]>(kv, cacheKey);
+    let cached: LeaderboardEntry[] | null = null;
+    try {
+        cached = await getJsonKV<LeaderboardEntry[]>(kv, cacheKey);
+    } catch (cacheError: any) {
+        console.warn(`Failed to parse leaderboard cache key ${cacheKey}, rebuilding cache:`, cacheError?.message || cacheError);
+        await kv.delete(cacheKey).catch(() => undefined);
+    }
     if (cached) {
         return cached.slice(0, safeLimit);
     }
@@ -779,7 +785,15 @@ async function readLeaderboardScope(
         const listResult = await kv.list({ prefix, cursor, limit: LEADERBOARD_SCAN_BATCH_SIZE });
         if (listResult.keys.length > 0) {
             const batchStats = await Promise.all(
-                listResult.keys.map(key => getJsonKV<UserStats>(kv, key.name))
+                listResult.keys.map(async (key) => {
+                    try {
+                        return await getJsonKV<UserStats>(kv, key.name);
+                    } catch (entryError: any) {
+                        // Skip malformed legacy/bad records rather than failing the whole leaderboard.
+                        console.warn(`Skipping malformed leaderboard record key ${key.name}:`, entryError?.message || entryError);
+                        return null;
+                    }
+                })
             );
             for (const item of batchStats) {
                 if (item) stats.push(item);
@@ -1827,8 +1841,14 @@ ${ocrError ? `\n圖片識別提示: ${ocrError}` : ''}
                     env.SESSION_KV.put(chapterWeeklyAttemptKey, String(chapterWeeklyCount + 1), { expirationTtl: CHAPTER_WEEKLY_COUNTER_TTL_SECONDS }),
                 ]);
             }
-            await bumpLeaderboardVersion(env.SESSION_KV);
-            const leaderboardSnapshot = await getLeaderboardBundle(env.SESSION_KV, 10);
+            let leaderboardSnapshot: Awaited<ReturnType<typeof getLeaderboardBundle>> | null = null;
+            try {
+                await bumpLeaderboardVersion(env.SESSION_KV);
+                leaderboardSnapshot = await getLeaderboardBundle(env.SESSION_KV, 10);
+            } catch (leaderboardError: any) {
+                console.error(`Leaderboard snapshot generation failed after submit for user ${userId}:`, leaderboardError?.message || leaderboardError);
+                leaderboardSnapshot = null;
+            }
             await env.SESSION_KV.put(submitCooldownKey, Date.now().toString(), { expirationTtl: SUBMIT_COOLDOWN_SECONDS });
 
             const responseData: any = { // Use 'any' temporarily for flexibility
