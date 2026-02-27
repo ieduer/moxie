@@ -29,8 +29,8 @@ const GAOKAO_SET_LOCK_TTL_SECONDS = 300;
 const CHAPTER_DAILY_COUNTER_TTL_SECONDS = 60 * 60 * 24 * 2;
 const CHAPTER_WEEKLY_COUNTER_TTL_SECONDS = 60 * 60 * 24 * 8;
 const MAX_UPLOAD_IMAGE_BYTES = 5 * 1024 * 1024;
-const CHAPTER_DAILY_SUBMIT_LIMIT = 2;
-const CHAPTER_WEEKLY_SUBMIT_LIMIT = 8;
+const CHAPTER_DAILY_SUBMIT_LIMIT_DEFAULT = 0; // 0 means unlimited
+const CHAPTER_WEEKLY_SUBMIT_LIMIT_DEFAULT = 0; // 0 means unlimited
 const IMAGE_FINGERPRINT_PENDING_TTL_SECONDS = 60 * 10;
 const IMAGE_FINGERPRINT_TTL_SECONDS = 60 * 60 * 24;
 const USERNAME_MIN_LENGTH = 2;
@@ -194,6 +194,8 @@ interface Env {
     IMAGES_BUCKET: R2Bucket;
     GEMINI_API_KEY: string;
     SESSION_KV: KVNamespace;
+    CHAPTER_DAILY_SUBMIT_LIMIT?: string;
+    CHAPTER_WEEKLY_SUBMIT_LIMIT?: string;
 }
 
 // --- Utility Functions --- (Keep getRandomItems, arrayBufferToBase64, generateUniqueKey, delay)
@@ -448,6 +450,23 @@ function parseStoredCounter(rawValue: string | null, fallbackOnInvalid = 0): num
         return fallbackOnInvalid;
     }
     return parsed;
+}
+
+function parseNonNegativeInt(rawValue: string | undefined, fallback: number): number {
+    if (rawValue === undefined || rawValue === null || rawValue === '') {
+        return fallback;
+    }
+    const parsed = Number.parseInt(rawValue, 10);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+        return fallback;
+    }
+    return parsed;
+}
+
+function getChapterSubmitLimits(env: Env): { dailyLimit: number; weeklyLimit: number; } {
+    const dailyLimit = parseNonNegativeInt(env.CHAPTER_DAILY_SUBMIT_LIMIT, CHAPTER_DAILY_SUBMIT_LIMIT_DEFAULT);
+    const weeklyLimit = parseNonNegativeInt(env.CHAPTER_WEEKLY_SUBMIT_LIMIT, CHAPTER_WEEKLY_SUBMIT_LIMIT_DEFAULT);
+    return { dailyLimit, weeklyLimit };
 }
 
 function calculatePointsAwarded(totalScore: number, scoreTarget: number, questionCount: number): number {
@@ -1400,6 +1419,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             const session = await getSessionFromRequest(request, env.SESSION_KV, true);
             const userId = session.userId;
             const username = session.username;
+            const { dailyLimit: chapterDailyLimit, weeklyLimit: chapterWeeklyLimit } = getChapterSubmitLimits(env);
             const submitLockKey = getSubmitLockKey(userId);
             const submitCooldownKey = getSubmitCooldownKey(userId);
             const submitLock = await env.SESSION_KV.get(submitLockKey);
@@ -1507,13 +1527,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 chapterWeeklyAttemptKey = getChapterAttemptKey('weekly', chapterWeeklyKey, userId, order);
                 const rawDailyCount = await env.SESSION_KV.get(chapterDailyAttemptKey);
                 const rawWeeklyCount = await env.SESSION_KV.get(chapterWeeklyAttemptKey);
-                chapterDailyCount = parseStoredCounter(rawDailyCount, CHAPTER_DAILY_SUBMIT_LIMIT);
-                chapterWeeklyCount = parseStoredCounter(rawWeeklyCount, CHAPTER_WEEKLY_SUBMIT_LIMIT);
-                if (chapterDailyCount >= CHAPTER_DAILY_SUBMIT_LIMIT) {
-                    return new Response(JSON.stringify({ error: `本篇今日已達 ${CHAPTER_DAILY_SUBMIT_LIMIT} 次提交上限，請明日再試。` }), { status: 429, headers: baseHeaders });
+                chapterDailyCount = parseStoredCounter(rawDailyCount, chapterDailyLimit > 0 ? chapterDailyLimit : 0);
+                chapterWeeklyCount = parseStoredCounter(rawWeeklyCount, chapterWeeklyLimit > 0 ? chapterWeeklyLimit : 0);
+                if (chapterDailyLimit > 0 && chapterDailyCount >= chapterDailyLimit) {
+                    return new Response(JSON.stringify({ error: `本篇今日已達 ${chapterDailyLimit} 次提交上限，請明日再試。` }), { status: 429, headers: baseHeaders });
                 }
-                if (chapterWeeklyCount >= CHAPTER_WEEKLY_SUBMIT_LIMIT) {
-                    return new Response(JSON.stringify({ error: `本篇本週已達 ${CHAPTER_WEEKLY_SUBMIT_LIMIT} 次提交上限，請下週再試。` }), { status: 429, headers: baseHeaders });
+                if (chapterWeeklyLimit > 0 && chapterWeeklyCount >= chapterWeeklyLimit) {
+                    return new Response(JSON.stringify({ error: `本篇本週已達 ${chapterWeeklyLimit} 次提交上限，請下週再試。` }), { status: 429, headers: baseHeaders });
                 }
                 const poemData = getPreparedPoemData();
                 const chapterEntry = poemData.chapterMap.get(order);
@@ -1852,11 +1872,34 @@ ${ocrError ? `\n圖片識別提示: ${ocrError}` : ''}
                 updateScopedStats(env.SESSION_KV, 'daily', dailyKey, userId, username, pointsAwarded, totalScore),
             ]);
             scoreCommitted = true;
-            if (challengeType === 'chapter' && chapterDailyAttemptKey && chapterWeeklyAttemptKey) {
-                await Promise.all([
-                    env.SESSION_KV.put(chapterDailyAttemptKey, String(chapterDailyCount + 1), { expirationTtl: CHAPTER_DAILY_COUNTER_TTL_SECONDS }),
-                    env.SESSION_KV.put(chapterWeeklyAttemptKey, String(chapterWeeklyCount + 1), { expirationTtl: CHAPTER_WEEKLY_COUNTER_TTL_SECONDS }),
-                ]);
+            if (
+                challengeType === 'chapter' &&
+                chapterDailyAttemptKey &&
+                chapterWeeklyAttemptKey &&
+                (chapterDailyLimit > 0 || chapterWeeklyLimit > 0)
+            ) {
+                const counterWrites: Promise<void>[] = [];
+                if (chapterDailyLimit > 0) {
+                    counterWrites.push(
+                        env.SESSION_KV.put(
+                            chapterDailyAttemptKey,
+                            String(chapterDailyCount + 1),
+                            { expirationTtl: CHAPTER_DAILY_COUNTER_TTL_SECONDS }
+                        )
+                    );
+                }
+                if (chapterWeeklyLimit > 0) {
+                    counterWrites.push(
+                        env.SESSION_KV.put(
+                            chapterWeeklyAttemptKey,
+                            String(chapterWeeklyCount + 1),
+                            { expirationTtl: CHAPTER_WEEKLY_COUNTER_TTL_SECONDS }
+                        )
+                    );
+                }
+                if (counterWrites.length > 0) {
+                    await Promise.all(counterWrites);
+                }
             }
             let leaderboardSnapshot: Awaited<ReturnType<typeof getLeaderboardBundle>> | null = null;
             try {
