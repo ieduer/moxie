@@ -276,6 +276,43 @@
             margin: 0;
         }
 
+        .account-panel {
+            margin-bottom: 22px;
+            padding: 14px;
+            border: 1px solid var(--ghibli-border-color);
+            border-radius: 10px;
+            background-color: rgba(255, 255, 255, 0.68);
+        }
+
+        .account-form {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        #username-input {
+            flex: 1;
+            padding: 10px 12px;
+            border: 1px solid var(--ghibli-border-color);
+            border-radius: 8px;
+            font-family: var(--font-primary);
+            color: var(--ghibli-text);
+            background-color: rgba(255, 255, 255, 0.9);
+        }
+
+        #username-input:focus {
+            outline: 2px solid rgba(138, 163, 163, 0.25);
+            border-color: var(--ghibli-primary);
+        }
+
+        #account-status {
+            font-size: 0.9em;
+            color: var(--ghibli-text-light);
+            line-height: 1.5;
+            margin: 0;
+        }
+
         button {
             padding: 11px 24px;
             cursor: pointer;
@@ -671,6 +708,119 @@
             color: var(--ghibli-text-light);
         }
 
+        #leaderboard-panel {
+            margin-top: 25px;
+            padding: 18px;
+            border: 1px solid var(--ghibli-border-color);
+            border-radius: 12px;
+            background-color: rgba(255, 255, 255, 0.76);
+            box-shadow: var(--ghibli-shadow);
+        }
+
+        #leaderboard-panel h2 {
+            margin-top: 0;
+            font-size: 1.4em;
+        }
+
+        .leaderboard-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .leaderboard-tab {
+            padding: 7px 12px;
+            border-radius: 12px;
+            border: 1px solid var(--ghibli-border-color);
+            background-color: var(--ghibli-bg);
+            color: var(--ghibli-text);
+            font-size: 0.9em;
+            box-shadow: none;
+        }
+
+        .leaderboard-tab.active {
+            background-color: var(--ghibli-primary);
+            color: var(--ghibli-bg);
+            border-color: var(--ghibli-primary-dark);
+        }
+
+        #leaderboard-meta {
+            color: var(--ghibli-text-light);
+            font-size: 0.85em;
+            margin-bottom: 10px;
+        }
+
+        .leaderboard-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .leaderboard-row {
+            display: grid;
+            grid-template-columns: 42px 1fr auto;
+            gap: 10px;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 8px;
+            background-color: var(--ghibli-bg);
+            border: 1px solid var(--ghibli-border-color);
+            font-size: 0.92em;
+        }
+
+        .leaderboard-row.me {
+            border-color: var(--ghibli-primary);
+            background-color: rgba(224, 242, 242, 0.45);
+        }
+
+        .leaderboard-rank {
+            font-weight: bold;
+            color: var(--ghibli-primary-dark);
+            text-align: center;
+        }
+
+        .leaderboard-user {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .leaderboard-user-name {
+            font-weight: bold;
+            color: var(--ghibli-text);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .leaderboard-user-tier {
+            font-size: 0.82em;
+            color: var(--ghibli-text-light);
+        }
+
+        .leaderboard-score {
+            text-align: right;
+            color: var(--ghibli-primary-dark);
+            font-weight: bold;
+        }
+
+        .leaderboard-score small {
+            display: block;
+            color: var(--ghibli-text-light);
+            font-weight: normal;
+            font-size: 0.78em;
+        }
+
+        .leaderboard-empty {
+            text-align: center;
+            color: var(--ghibli-text-light);
+            font-style: italic;
+            border: 1px dashed var(--ghibli-border-color);
+            border-radius: 8px;
+            padding: 14px 12px;
+            background-color: rgba(255, 255, 255, 0.55);
+        }
+
         /* --- Styles for Chapter Selection --- (Requirement 9) */
         #chapter-selection {
             background-color: rgba(242, 239, 234, 0.7);
@@ -760,6 +910,13 @@
                 <button id="gaokao-challenge-btn">挑戰高考</button>
                 <button id="select-chapter-btn">選篇挑戰</button>
             </div>
+            <div class="account-panel">
+                <div class="account-form">
+                    <input id="username-input" type="text" maxlength="20" placeholder="輸入用戶名（中文/字母/數字）">
+                    <button id="login-btn" class="secondary-btn">登錄</button>
+                </div>
+                <p id="account-status">尚未登錄。請先輸入用戶名。</p>
+            </div>
             <div class="experience-tips">
                 <p><strong>操作流程：</strong>先選模式 → 按順序分行作答 → 拍清晰照片 → 等待評閱</p>
             </div>
@@ -788,6 +945,16 @@
 
         <!-- Right Column: Results / Chapter Selection -->
         <div class="right-column">
+            <div id="leaderboard-panel">
+                <h2>排行榜</h2>
+                <div class="leaderboard-tabs">
+                    <button type="button" class="leaderboard-tab active" data-scope="total">總榜</button>
+                    <button type="button" class="leaderboard-tab" data-scope="weekly">週榜</button>
+                    <button type="button" class="leaderboard-tab" data-scope="daily">日榜</button>
+                </div>
+                <div id="leaderboard-meta">載入中...</div>
+                <div id="leaderboard-list" class="leaderboard-list"></div>
+            </div>
             <!-- Container for Chapter Selection (Requirement 6) -->
             <div id="chapter-selection" style="display: none;">
                 <!-- Chapter list will be injected here by JS -->
@@ -821,6 +988,12 @@
         const gaokaoChallengeBtn = document.getElementById('gaokao-challenge-btn'); // (Req 4) Renamed button
         const selectChapterBtn = document.getElementById('select-chapter-btn'); // (Req 4) New button
         const backToChaptersBtn = document.getElementById('back-to-chapters-btn');
+        const usernameInput = document.getElementById('username-input');
+        const loginBtn = document.getElementById('login-btn');
+        const accountStatus = document.getElementById('account-status');
+        const leaderboardListDiv = document.getElementById('leaderboard-list');
+        const leaderboardMetaDiv = document.getElementById('leaderboard-meta');
+        const leaderboardTabs = Array.from(document.querySelectorAll('.leaderboard-tab'));
         const submitBtn = document.getElementById('submit-btn');
         const rightColumn = document.querySelector('.right-column');
         const leftColumn = document.querySelector('.left-column'); // Cache left column too
@@ -835,11 +1008,21 @@
         let isLoading = false; // General loading state flag
         let chapterCache = null;
         let chapterCacheTime = 0;
+        let currentUser = null;
+        let leaderboardScope = 'total';
+        let leaderboardState = {
+            period: { dailyKey: '', weeklyKey: '' },
+            total: [],
+            weekly: [],
+            daily: [],
+            me: null,
+        };
 
         const API_BASE_URL = '/api';
         const API_TIMEOUT_MS = 20000;
         const API_RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
         const CHAPTER_CACHE_TTL_MS = 5 * 60 * 1000;
+        const USERNAME_STORAGE_KEY = 'moxie_username';
 
         const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -925,6 +1108,133 @@
                 throw lastError;
             }
             throw new Error('API 請求失敗');
+        }
+
+        function readStoredUsername() {
+            return localStorage.getItem(USERNAME_STORAGE_KEY) || '';
+        }
+
+        function writeStoredUsername(username) {
+            if (username) {
+                localStorage.setItem(USERNAME_STORAGE_KEY, username);
+            } else {
+                localStorage.removeItem(USERNAME_STORAGE_KEY);
+            }
+        }
+
+        function renderAccountStatus() {
+            if (!currentUser) {
+                accountStatus.textContent = '尚未登錄。請先輸入用戶名。';
+                return;
+            }
+
+            const totalStats = currentUser.stats?.total;
+            if (!totalStats) {
+                accountStatus.textContent = `已登錄：${currentUser.username}`;
+                return;
+            }
+
+            accountStatus.textContent = `已登錄：${currentUser.username}｜段位：${totalStats.tier.tierName}｜總積分：${totalStats.points}｜參與：${totalStats.attempts} 次`;
+        }
+
+        function requireLogin() {
+            if (currentUser && currentUser.username) return true;
+            displayError('請先輸入用戶名並登錄，再開始挑戰。', statusDiv);
+            usernameInput.focus();
+            return false;
+        }
+
+        async function loginWithUsername(rawUsername, options = {}) {
+            const username = (rawUsername || '').trim();
+            if (!username) {
+                if (!options.silent) displayError('請輸入用戶名。', statusDiv);
+                return false;
+            }
+
+            setLoadingState(loginBtn, true, '登錄中');
+            try {
+                const data = await requestJson(
+                    '/login',
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username }),
+                    },
+                    { retries: 0 }
+                );
+
+                currentUser = {
+                    userId: data.user.userId,
+                    username: data.user.username,
+                    stats: data.stats,
+                };
+                usernameInput.value = currentUser.username;
+                writeStoredUsername(currentUser.username);
+                renderAccountStatus();
+                statusDiv.textContent = `狀態：已登錄為 ${currentUser.username}，請選擇挑戰模式。`;
+                await refreshLeaderboard();
+                return true;
+            } catch (error) {
+                if (!options.silent) displayError(`登錄失敗：${error.message || '未知錯誤'}`, statusDiv);
+                currentUser = null;
+                renderAccountStatus();
+                return false;
+            } finally {
+                setLoadingState(loginBtn, false, '登錄');
+            }
+        }
+
+        function formatPeriodLabel(scope, periodInfo) {
+            if (!periodInfo) return '';
+            if (scope === 'daily') return `日期：${periodInfo.dailyKey || '-'}`;
+            if (scope === 'weekly') return `週次：${periodInfo.weeklyKey || '-'}`;
+            return '統計範圍：全部歷史';
+        }
+
+        function renderLeaderboard() {
+            if (!leaderboardListDiv || !leaderboardMetaDiv) return;
+            const rows = Array.isArray(leaderboardState[leaderboardScope]) ? leaderboardState[leaderboardScope] : [];
+            leaderboardMetaDiv.textContent = formatPeriodLabel(leaderboardScope, leaderboardState.period);
+
+            if (!rows.length) {
+                leaderboardListDiv.innerHTML = '<div class="leaderboard-empty">暫無數據，快來搶首榜。</div>';
+                return;
+            }
+
+            leaderboardListDiv.innerHTML = rows.map((entry, index) => {
+                const isMe = currentUser && entry.userId === currentUser.userId;
+                const safeName = escapeHtml(entry.username);
+                const tierName = escapeHtml(entry.tier?.tierName || '工蜂');
+                const points = Number(entry.points || 0);
+                const attempts = Number(entry.attempts || 0);
+                const avgScore = Number(entry.avgScore || 0);
+                return `<div class="leaderboard-row ${isMe ? 'me' : ''}">
+                    <div class="leaderboard-rank">#${index + 1}</div>
+                    <div class="leaderboard-user">
+                        <div class="leaderboard-user-name">${safeName}</div>
+                        <div class="leaderboard-user-tier">${tierName}</div>
+                    </div>
+                    <div class="leaderboard-score">${points}
+                        <small>參與 ${attempts} 次｜均分 ${avgScore.toFixed(1)}</small>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        async function refreshLeaderboard() {
+            const query = currentUser?.username ? `?username=${encodeURIComponent(currentUser.username)}&limit=20` : '?limit=20';
+            try {
+                const data = await requestJson(`/leaderboard${query}`, { method: 'GET' }, { retries: 1, timeoutMs: 15000 });
+                leaderboardState = data;
+                if (data.me && currentUser && data.me.userId === currentUser.userId) {
+                    currentUser.stats = data.me.stats;
+                    renderAccountStatus();
+                }
+            } catch (error) {
+                console.error('Leaderboard fetch failed:', error);
+                leaderboardState = { period: { dailyKey: '', weeklyKey: '' }, total: [], weekly: [], daily: [], me: null };
+            }
+            renderLeaderboard();
         }
 
         // --- Utility Functions ---
@@ -1096,12 +1406,34 @@
 
         // --- Event Listeners ---
 
+        loginBtn.addEventListener('click', async () => {
+            await loginWithUsername(usernameInput.value);
+        });
+
+        usernameInput.addEventListener('keydown', async (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                await loginWithUsername(usernameInput.value);
+            }
+        });
+
+        leaderboardTabs.forEach((tab) => {
+            tab.addEventListener('click', () => {
+                const scope = tab.dataset.scope;
+                if (!scope || !['total', 'weekly', 'daily'].includes(scope)) return;
+                leaderboardScope = scope;
+                leaderboardTabs.forEach(btn => btn.classList.toggle('active', btn === tab));
+                renderLeaderboard();
+            });
+        });
+
         backToChaptersBtn.addEventListener('click', () => {
             openChapterSelection();
         });
 
         // (Req 5) Listener for "挑戰高考" button
         gaokaoChallengeBtn.addEventListener('click', async () => {
+            if (!requireLogin()) return;
             if (isLoading) return; // Prevent multiple clicks
             isLoading = true;
             resetUI(); // Full reset
@@ -1138,6 +1470,7 @@
 
         // (Req 6, 8) Listener for "選篇挑戰" button
         selectChapterBtn.addEventListener('click', async () => {
+            if (!requireLogin()) return;
             if (isLoading) return;
             isLoading = true;
             resetUI(); // Full reset before showing chapters
@@ -1296,6 +1629,11 @@
         // --- Submit Button Listener (Handles both modes) ---
         submitBtn.addEventListener('click', async () => {
             if (isSubmitting) return;
+            if (!currentUser || !currentUser.username) {
+                displayError('請先登錄用戶名後再提交。', statusDiv);
+                usernameInput.focus();
+                return;
+            }
             if (!currentChallengeType || !currentChallengeIdentifier) {
                 displayError('請先選擇挑戰模式並加載題目。', statusDiv);
                 return;
@@ -1320,8 +1658,7 @@
             if (rightColumn) rightColumn.scrollTo({ top: 0, behavior: 'smooth' });
 
             const formData = new FormData();
-            // Bug Fix: Include persistent userId for rank tracking
-            formData.append('userId', getUserId());
+            formData.append('username', currentUser.username);
             // Append the correct identifier based on challenge type
             if (currentChallengeType === 'gaokao') {
                 formData.append('setId', currentChallengeIdentifier);
@@ -1383,15 +1720,25 @@
                     resultHTML += `<div class="error-message">無法解析詳細評分結果。</div>`;
                 }
 
-                // Add rank/badge section only if it exists in response (i.e., for GaoKao challenge)
+                if (typeof resultData.pointsAwarded === 'number') {
+                    const pointsDisplay = Math.round(Number(resultData.pointsAwarded));
+                    resultHTML += `<div class="processing-hints"><p>本次積分 +${pointsDisplay}</p></div>`;
+                }
+
                 let rankBadgeHTML = '';
-                if (resultData.badge || resultData.rank !== undefined) {
+                if (resultData.userStats?.total) {
+                    const totalStats = resultData.userStats.total;
+                    const tierName = escapeHtml(totalStats.tier?.tierName || '工蜂');
+                    const nextTierName = totalStats.tier?.nextTierName ? escapeHtml(totalStats.tier.nextTierName) : '滿級';
+                    const progressPercent = Number(totalStats.tier?.progressPercent ?? 100);
+                    const totalPoints = Number(totalStats.points || 0);
+                    const attempts = Number(totalStats.attempts || 0);
                     rankBadgeHTML += `<div class="rank-badge-section">`;
-                    if (resultData.badge) rankBadgeHTML += `<div class="badge-display">本次獲得徽章: <span>${escapeHtml(resultData.badge)}</span></div>`;
-                    if (resultData.rank !== undefined) rankBadgeHTML += `<div class="rank-display">當前段位: ${escapeHtml(convertToChineseRankFrontend(resultData.rank))}階</div>`;
+                    rankBadgeHTML += `<div class="badge-display">當前段位：<span>${tierName}</span></div>`;
+                    rankBadgeHTML += `<div class="rank-display">總積分 ${totalPoints} ｜參與 ${attempts} 次 ｜晉級進度 ${progressPercent}%（下一段位：${nextTierName}）</div>`;
                     rankBadgeHTML += `</div>`;
                 }
-                resultHTML += rankBadgeHTML; // Add rank/badge if available
+                resultHTML += rankBadgeHTML;
 
                 // Display results
                 resultDiv.innerHTML = resultHTML;
@@ -1420,6 +1767,14 @@
                 // - Reset only the upload widgets so the user can optionally resubmit with a clearer photo
                 uploadSection.style.display = 'block';
                 resetUploadWidgets('已批閱。如需重交，請重新選擇一張更清晰的照片。');
+                if (resultData.user?.username && currentUser) {
+                    currentUser.username = resultData.user.username;
+                }
+                if (resultData.userStats && currentUser) {
+                    currentUser.stats = resultData.userStats;
+                    renderAccountStatus();
+                }
+                await refreshLeaderboard();
 
 
             } catch (error) {
@@ -1435,32 +1790,16 @@
         });
 
         // --- Initial Setup ---
-        resetUI(); // Start in the initial state
+        resetUI();
+        renderAccountStatus();
+        refreshLeaderboard();
 
-        // --- Frontend Helper function for Chinese Rank (Bug Fix: Consistent with backend) ---
-        function convertToChineseRankFrontend(rank) {
-            rank = Number(rank);
-            if (isNaN(rank) || rank < 0) return "未知";
-            if (rank === 0) return "初窺門徑";  // Bug Fix: Match backend naming
-            const nums = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
-            if (rank >= 10) return "登峰造極";  // Bug Fix: Add highest tier
-            if (rank >= 7) return `巔峰${nums[rank]}`;  // Bug Fix: High tier naming
-            if (rank <= 10) return nums[rank];
-            if (rank < 20) return "十" + nums[rank - 10];
-            if (rank % 10 === 0 && rank < 100) return nums[Math.floor(rank / 10)] + "十";
-            if (rank < 100) return nums[Math.floor(rank / 10)] + "十" + nums[rank % 10];
-            return `宗師 ${rank}`;
-        }
-
-        // --- Helper function to get/create persistent user ID ---
-        function getUserId() {
-            let userId = localStorage.getItem('moxie_user_id');
-            if (!userId) {
-                userId = crypto.randomUUID();
-                localStorage.setItem('moxie_user_id', userId);
-            }
-            return userId;
-        }
+        (async () => {
+            const storedUsername = readStoredUsername();
+            if (!storedUsername) return;
+            usernameInput.value = storedUsername;
+            await loginWithUsername(storedUsername, { silent: true });
+        })();
     </script>
 
 </body>

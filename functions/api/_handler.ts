@@ -15,6 +15,11 @@ const MAX_FEEDBACK_TOKENS = 3000;
 const API_RETRY_COUNT = 2;
 const API_RETRY_DELAY_MS = 1500;
 const TOTAL_SCORE_TARGET = 8; // Target total score for both challenge types
+const LEADERBOARD_TOP_LIMIT = 50;
+const STATS_PERIOD_TTL_SECONDS = 60 * 60 * 24 * 120; // 120 days
+const USERNAME_MIN_LENGTH = 2;
+const USERNAME_MAX_LENGTH = 20;
+const USERNAME_ALLOWED_REGEX = /^[\p{L}\p{N}_-]+$/u;
 
 // --- Type Definitions ---
 
@@ -101,6 +106,36 @@ interface SubmissionResult {
     isCorrect: boolean;
     score: number;
     error?: string;
+}
+
+type LeaderboardScope = 'total' | 'weekly' | 'daily';
+
+interface UserProfile {
+    userId: string;
+    username: string;
+    createdAt: number;
+    updatedAt: number;
+}
+
+interface UserStats {
+    userId: string;
+    username: string;
+    points: number;
+    attempts: number;
+    totalScore: number;
+    updatedAt: number;
+}
+
+interface TierInfo {
+    tierLevel: number;
+    tierName: string;
+    nextTierName: string | null;
+    progressPercent: number;
+}
+
+interface LeaderboardEntry extends UserStats {
+    avgScore: number;
+    tier: TierInfo;
 }
 
 // Environment Bindings Interface (Keep as they are)
@@ -196,6 +231,260 @@ function createMissingBindingsResponse(missing: (keyof Env)[], headers: Record<s
         status: 500,
         headers,
     });
+}
+
+function normalizeUsername(input: string): string {
+    return input.trim().toLowerCase();
+}
+
+function validateUsername(input: string): { normalized: string; display: string } {
+    const display = input.trim();
+    if (display.length < USERNAME_MIN_LENGTH || display.length > USERNAME_MAX_LENGTH) {
+        throw new Error(`用戶名長度需在 ${USERNAME_MIN_LENGTH}-${USERNAME_MAX_LENGTH} 字之間。`);
+    }
+    if (!USERNAME_ALLOWED_REGEX.test(display)) {
+        throw new Error("用戶名僅支持中文、字母、數字、下劃線與連字符。");
+    }
+    return { normalized: normalizeUsername(display), display };
+}
+
+function getShanghaiDateTimeParts(nowMs: number): { year: number; month: number; day: number } {
+    const shifted = new Date(nowMs + 8 * 60 * 60 * 1000);
+    return {
+        year: shifted.getUTCFullYear(),
+        month: shifted.getUTCMonth() + 1,
+        day: shifted.getUTCDate(),
+    };
+}
+
+function getDailyKey(nowMs = Date.now()): string {
+    const { year, month, day } = getShanghaiDateTimeParts(nowMs);
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function getWeeklyKey(nowMs = Date.now()): string {
+    const { year, month, day } = getShanghaiDateTimeParts(nowMs);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    // ISO week: shift to Thursday of current week
+    const weekday = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - weekday);
+    const weekYear = date.getUTCFullYear();
+    const yearStart = new Date(Date.UTC(weekYear, 0, 1));
+    const weekNo = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+    return `${weekYear}-W${String(weekNo).padStart(2, '0')}`;
+}
+
+function getProfileKey(userId: string): string {
+    return `moxie:user:profile:${userId}`;
+}
+
+function getStatsKey(scope: LeaderboardScope, period: string, userId: string): string {
+    if (scope === 'total') {
+        return `moxie:leaderboard:total:user:${userId}`;
+    }
+    return `moxie:leaderboard:${scope}:${period}:user:${userId}`;
+}
+
+function getTopKey(scope: LeaderboardScope, period: string): string {
+    if (scope === 'total') {
+        return `moxie:leaderboard:total:top`;
+    }
+    return `moxie:leaderboard:${scope}:${period}:top`;
+}
+
+async function getJsonKV<T>(kv: KVNamespace, key: string): Promise<T | null> {
+    return kv.get<T>(key, 'json');
+}
+
+async function putJsonKV(kv: KVNamespace, key: string, value: unknown, expirationTtl?: number): Promise<void> {
+    const options = expirationTtl ? { expirationTtl } : undefined;
+    await kv.put(key, JSON.stringify(value), options);
+}
+
+function calculatePointsAwarded(totalScore: number): number {
+    const basePoints = Math.round(totalScore * 10); // 0-80
+    const participationBonus = 5;
+    const fullScoreBonus = totalScore >= TOTAL_SCORE_TARGET ? 15 : 0;
+    return basePoints + participationBonus + fullScoreBonus;
+}
+
+const IDV_TIERS: { minPoints: number; tierLevel: number; tierName: string; }[] = [
+    { minPoints: 0, tierLevel: 1, tierName: '工蜂' },
+    { minPoints: 200, tierLevel: 2, tierName: '獵犬' },
+    { minPoints: 600, tierLevel: 3, tierName: '馴鹿' },
+    { minPoints: 1200, tierLevel: 4, tierName: '猛獁' },
+    { minPoints: 2000, tierLevel: 5, tierName: '獅鷲' },
+    { minPoints: 3200, tierLevel: 6, tierName: '獨角獸' },
+    { minPoints: 4800, tierLevel: 7, tierName: '勇士' },
+    { minPoints: 7000, tierLevel: 8, tierName: '泰坦' },
+];
+
+function getTierInfo(points: number): TierInfo {
+    let currentIndex = 0;
+    for (let i = 0; i < IDV_TIERS.length; i++) {
+        if (points >= IDV_TIERS[i].minPoints) {
+            currentIndex = i;
+        } else {
+            break;
+        }
+    }
+
+    const current = IDV_TIERS[currentIndex];
+    const next = IDV_TIERS[currentIndex + 1] ?? null;
+    let progressPercent = 100;
+    if (next) {
+        const span = next.minPoints - current.minPoints;
+        progressPercent = Math.max(0, Math.min(100, Math.round(((points - current.minPoints) / span) * 100)));
+    }
+
+    return {
+        tierLevel: current.tierLevel,
+        tierName: current.tierName,
+        nextTierName: next?.tierName ?? null,
+        progressPercent,
+    };
+}
+
+function toLeaderboardEntry(stats: UserStats): LeaderboardEntry {
+    return {
+        ...stats,
+        avgScore: stats.attempts > 0 ? Math.round((stats.totalScore / stats.attempts) * 100) / 100 : 0,
+        tier: getTierInfo(stats.points),
+    };
+}
+
+function sortLeaderboard(entries: LeaderboardEntry[]): LeaderboardEntry[] {
+    return entries.sort((a, b) => {
+        if (b.points !== a.points) return b.points - a.points;
+        if (b.attempts !== a.attempts) return b.attempts - a.attempts;
+        return a.updatedAt - b.updatedAt;
+    });
+}
+
+async function upsertLeaderboardTopList(
+    kv: KVNamespace,
+    topKey: string,
+    stats: UserStats,
+    expirationTtl?: number
+): Promise<LeaderboardEntry[]> {
+    const existing = await getJsonKV<LeaderboardEntry[]>(kv, topKey) ?? [];
+    const filtered = existing.filter(entry => entry.userId !== stats.userId);
+    filtered.push(toLeaderboardEntry(stats));
+    const sorted = sortLeaderboard(filtered).slice(0, LEADERBOARD_TOP_LIMIT);
+    await putJsonKV(kv, topKey, sorted, expirationTtl);
+    return sorted;
+}
+
+async function updateScopedStats(
+    kv: KVNamespace,
+    scope: LeaderboardScope,
+    period: string,
+    userId: string,
+    username: string,
+    pointsAwarded: number,
+    totalScore: number
+): Promise<{ stats: UserStats; topList: LeaderboardEntry[] }> {
+    const statsKey = getStatsKey(scope, period, userId);
+    const topKey = getTopKey(scope, period);
+    const now = Date.now();
+    const current = await getJsonKV<UserStats>(kv, statsKey);
+    const nextStats: UserStats = {
+        userId,
+        username,
+        points: (current?.points ?? 0) + pointsAwarded,
+        attempts: (current?.attempts ?? 0) + 1,
+        totalScore: Math.round(((current?.totalScore ?? 0) + totalScore) * 10) / 10,
+        updatedAt: now,
+    };
+
+    const ttl = scope === 'total' ? undefined : STATS_PERIOD_TTL_SECONDS;
+    await putJsonKV(kv, statsKey, nextStats, ttl);
+    const topList = await upsertLeaderboardTopList(kv, topKey, nextStats, ttl);
+    return { stats: nextStats, topList };
+}
+
+async function ensureUserProfile(kv: KVNamespace, userId: string, username: string): Promise<UserProfile> {
+    const key = getProfileKey(userId);
+    const current = await getJsonKV<UserProfile>(kv, key);
+    const now = Date.now();
+    const profile: UserProfile = {
+        userId,
+        username,
+        createdAt: current?.createdAt ?? now,
+        updatedAt: now,
+    };
+    await putJsonKV(kv, key, profile);
+    return profile;
+}
+
+async function getUserStatsSummary(kv: KVNamespace, userId: string, username: string): Promise<{
+    total: LeaderboardEntry;
+    weekly: LeaderboardEntry;
+    daily: LeaderboardEntry;
+    dailyKey: string;
+    weeklyKey: string;
+}> {
+    const now = Date.now();
+    const dailyKey = getDailyKey(now);
+    const weeklyKey = getWeeklyKey(now);
+
+    const totalStats = await getJsonKV<UserStats>(kv, getStatsKey('total', 'all', userId)) ?? {
+        userId,
+        username,
+        points: 0,
+        attempts: 0,
+        totalScore: 0,
+        updatedAt: now,
+    };
+    const weeklyStats = await getJsonKV<UserStats>(kv, getStatsKey('weekly', weeklyKey, userId)) ?? {
+        userId,
+        username,
+        points: 0,
+        attempts: 0,
+        totalScore: 0,
+        updatedAt: now,
+    };
+    const dailyStats = await getJsonKV<UserStats>(kv, getStatsKey('daily', dailyKey, userId)) ?? {
+        userId,
+        username,
+        points: 0,
+        attempts: 0,
+        totalScore: 0,
+        updatedAt: now,
+    };
+
+    return {
+        total: toLeaderboardEntry(totalStats),
+        weekly: toLeaderboardEntry(weeklyStats),
+        daily: toLeaderboardEntry(dailyStats),
+        dailyKey,
+        weeklyKey,
+    };
+}
+
+async function getLeaderboardBundle(kv: KVNamespace, limit: number): Promise<{
+    period: { dailyKey: string; weeklyKey: string; };
+    total: LeaderboardEntry[];
+    weekly: LeaderboardEntry[];
+    daily: LeaderboardEntry[];
+}> {
+    const now = Date.now();
+    const dailyKey = getDailyKey(now);
+    const weeklyKey = getWeeklyKey(now);
+    const safeLimit = Math.max(1, Math.min(limit, LEADERBOARD_TOP_LIMIT));
+
+    const [total, weekly, daily] = await Promise.all([
+        getJsonKV<LeaderboardEntry[]>(kv, getTopKey('total', 'all')),
+        getJsonKV<LeaderboardEntry[]>(kv, getTopKey('weekly', weeklyKey)),
+        getJsonKV<LeaderboardEntry[]>(kv, getTopKey('daily', dailyKey)),
+    ]);
+
+    return {
+        period: { dailyKey, weeklyKey },
+        total: (total ?? []).slice(0, safeLimit),
+        weekly: (weekly ?? []).slice(0, safeLimit),
+        daily: (daily ?? []).slice(0, safeLimit),
+    };
 }
 
 // --- Gemini API Call Function (Unchanged) ---
@@ -432,6 +721,74 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             return new Response(JSON.stringify(dataInfo), { headers: baseHeaders });
         }
 
+        if (apiPath === 'login' && request.method === 'POST') {
+            const missingBindings = getMissingBindings(env, ['SESSION_KV'] as const);
+            if (missingBindings.length > 0) {
+                return createMissingBindingsResponse(missingBindings, baseHeaders);
+            }
+
+            let requestBody: any = null;
+            try {
+                requestBody = await request.json();
+            } catch (parseError) {
+                return new Response(JSON.stringify({ error: '請求格式錯誤：需提交 JSON 格式。' }), { status: 400, headers: baseHeaders });
+            }
+
+            const rawUsername = typeof requestBody?.username === 'string' ? requestBody.username : '';
+            if (!rawUsername) {
+                return new Response(JSON.stringify({ error: '請輸入用戶名。' }), { status: 400, headers: baseHeaders });
+            }
+
+            let normalized = '';
+            let display = '';
+            try {
+                const validated = validateUsername(rawUsername);
+                normalized = validated.normalized;
+                display = validated.display;
+            } catch (validationError: any) {
+                return new Response(JSON.stringify({ error: validationError.message || '用戶名格式不正確。' }), { status: 400, headers: baseHeaders });
+            }
+
+            await ensureUserProfile(env.SESSION_KV, normalized, display);
+            const stats = await getUserStatsSummary(env.SESSION_KV, normalized, display);
+
+            return new Response(JSON.stringify({
+                user: {
+                    userId: normalized,
+                    username: display,
+                },
+                stats,
+            }), { headers: baseHeaders });
+        }
+
+        if (apiPath === 'leaderboard' && request.method === 'GET') {
+            const missingBindings = getMissingBindings(env, ['SESSION_KV'] as const);
+            if (missingBindings.length > 0) {
+                return createMissingBindingsResponse(missingBindings, baseHeaders);
+            }
+
+            const limitParam = url.searchParams.get('limit');
+            const limit = limitParam ? parseInt(limitParam, 10) : 20;
+            const bundle = await getLeaderboardBundle(env.SESSION_KV, isNaN(limit) ? 20 : limit);
+
+            const usernameParam = url.searchParams.get('username');
+            let me: { userId: string; username: string; stats: Awaited<ReturnType<typeof getUserStatsSummary>>; } | null = null;
+            if (typeof usernameParam === 'string' && usernameParam.trim()) {
+                try {
+                    const { normalized, display } = validateUsername(usernameParam);
+                    const stats = await getUserStatsSummary(env.SESSION_KV, normalized, display);
+                    me = { userId: normalized, username: display, stats };
+                } catch {
+                    me = null;
+                }
+            }
+
+            return new Response(JSON.stringify({
+                ...bundle,
+                me,
+            }), { headers: baseHeaders });
+        }
+
         // --- Route for "挑戰高考" --- (Requirement 5)
         if (apiPath === 'start_gaokao_set' && request.method === 'GET') {
             const missingBindings = getMissingBindings(env, ['SESSION_KV'] as const);
@@ -541,6 +898,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             const setIdValue = formData.get('setId'); // For GaoKao challenge
             const chapterOrderValue = formData.get('chapterOrder'); // For Chapter challenge
             const imageValue = formData.get('handwritingImage');
+            const usernameValue = formData.get('username');
             let imageFile: File;
 
             let challengeType: 'gaokao' | 'chapter' | 'unknown' = 'unknown';
@@ -568,6 +926,20 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             }
             imageFile = imageValue as File;
             console.log(`Validation passed for ${challengeType} challenge ${challengeIdentifier}. Image: ${imageFile.name}, Size: ${imageFile.size}, Type: ${imageFile.type}`);
+
+            if (typeof usernameValue !== 'string' || !usernameValue.trim()) {
+                return new Response(JSON.stringify({ error: '請先使用用戶名登錄後再提交。' }), { status: 400, headers: baseHeaders });
+            }
+            let userId = '';
+            let username = '';
+            try {
+                const validated = validateUsername(usernameValue);
+                userId = validated.normalized;
+                username = validated.display;
+            } catch (validationError: any) {
+                return new Response(JSON.stringify({ error: validationError.message || '用戶名格式不正確。' }), { status: 400, headers: baseHeaders });
+            }
+            await ensureUserProfile(env.SESSION_KV, userId, username);
 
 
             // --- Retrieve Correct Answers and Question Info ---
@@ -774,49 +1146,12 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             let feedbackErrorMsg: string | null = null;
             let feedbackFinishReason: string | null = null;
 
-            // --- Rank/Badge Logic (Only applies to GaoKao challenge) ---
-            let currentRank = 0; // Default rank
-            let badge = "";
-            // Bug Fix: Use userId from form data for persistent rank tracking across sessions
-            const userIdValue = formData.get('userId');
-            const userId = typeof userIdValue === 'string' && userIdValue ? userIdValue : 'anonymous';
-            const rankKey = `user-rank-${userId}`; // Use userId for rank tracking instead of setId
-
-            if (challengeType === 'gaokao') {
-                // Get Current Rank from KV
-                try {
-                    const storedRank = await env.SESSION_KV.get(rankKey, 'text');
-                    if (storedRank) {
-                        currentRank = parseInt(storedRank, 10) || 0;
-                    }
-                    console.log(`Loaded rank ${currentRank} for user ${userId}`);
-                } catch (kvRankError) {
-                    console.error("Failed to get rank from KV:", kvRankError);
-                }
-            }
-
-
             // --- Generate Feedback Text ---
             // Same prompt logic, adapted score context
             const scoreTarget = TOTAL_SCORE_TARGET;
             if (totalScore === scoreTarget) {
                 feedback = `太棒了！滿分 ${scoreTarget} 分！簡直是默寫的神！繼續保持！`;
                 feedbackErrorMsg = null;
-
-                // --- Rank Increase and Badge (Only for GaoKao) ---
-                if (challengeType === 'gaokao') {
-                    currentRank++;
-                    // Bug Fix: Proper badge assignment without overwriting
-                    if (currentRank === 1) {
-                        badge = '初窺門徑';
-                    } else if (currentRank >= 10) {
-                        badge = '登峰造極';
-                    } else if (currentRank >= 7) {
-                        badge = `巔峰${convertToChineseRank(currentRank)}階`;
-                    } else {
-                        badge = `${convertToChineseRank(currentRank)}階`;
-                    }
-                }
 
             } else {
                 const incorrectResults = results.filter(r => !r.isCorrect);
@@ -905,31 +1240,6 @@ ${ocrError ? `\n圖片識別提示: ${ocrError}` : ''}
                     feedbackErrorMsg = `AI 反饋生成服務調用失敗: ${feedbackError.message}`;
                     feedback = `得分 ${totalScore.toFixed(1)}，失分 ${(scoreTarget - totalScore).toFixed(1)}。這次表現還有進步空間哦。看看下面的錯誤細節，下次加油！\n錯誤詳情:\n${errorDetails || "（未能生成詳細的錯誤分析）"}`;
                 }
-
-                // --- Rank Decrease (Only for GaoKao) ---
-                if (challengeType === 'gaokao') {
-                    if (currentRank > 0) currentRank--;
-                    // Bug Fix: Consistent badge assignment logic
-                    if (currentRank === 0) {
-                        badge = '初窺門徑';
-                    } else if (currentRank >= 10) {
-                        badge = '登峰造極';
-                    } else if (currentRank >= 7) {
-                        badge = `巔峰${convertToChineseRank(currentRank)}階`;
-                    } else {
-                        badge = `${convertToChineseRank(currentRank)}階`;
-                    }
-                }
-            }
-
-            // --- Store Updated Rank (Only for GaoKao) ---
-            if (challengeType === 'gaokao') {
-                try {
-                    await env.SESSION_KV.put(rankKey, String(currentRank), { expirationTtl: KV_EXPIRATION_TTL_SECONDS });
-                    console.log(`GaoKao Rank updated to ${currentRank} for setId ${challengeIdentifier}`);
-                } catch (kvPutRankError) {
-                    console.error("Failed to put rank to KV:", kvPutRankError);
-                }
             }
 
             // --- Prepare Final Response ---
@@ -945,6 +1255,16 @@ ${ocrError ? `\n圖片識別提示: ${ocrError}` : ''}
                 finalMessage = `評分完成，但 AI 反饋生成過程遇到問題: ${feedbackIssueDetail}`;
             }
 
+            const pointsAwarded = calculatePointsAwarded(totalScore);
+            const now = Date.now();
+            const dailyKey = getDailyKey(now);
+            const weeklyKey = getWeeklyKey(now);
+            const [totalUpdate, weeklyUpdate, dailyUpdate] = await Promise.all([
+                updateScopedStats(env.SESSION_KV, 'total', 'all', userId, username, pointsAwarded, totalScore),
+                updateScopedStats(env.SESSION_KV, 'weekly', weeklyKey, userId, username, pointsAwarded, totalScore),
+                updateScopedStats(env.SESSION_KV, 'daily', dailyKey, userId, username, pointsAwarded, totalScore),
+            ]);
+
             const responseData: any = { // Use 'any' temporarily for flexibility
                 message: finalMessage,
                 totalScore: totalScore,
@@ -954,13 +1274,23 @@ ${ocrError ? `\n圖片識別提示: ${ocrError}` : ''}
                 r2Key: r2Key,
                 ocrIssue: ocrError,
                 feedbackIssue: feedbackErrorMsg,
+                pointsAwarded,
+                user: {
+                    userId,
+                    username,
+                },
+                userStats: {
+                    total: toLeaderboardEntry(totalUpdate.stats),
+                    weekly: toLeaderboardEntry(weeklyUpdate.stats),
+                    daily: toLeaderboardEntry(dailyUpdate.stats),
+                },
+                leaderboardSnapshot: {
+                    total: totalUpdate.topList.slice(0, 10),
+                    weekly: weeklyUpdate.topList.slice(0, 10),
+                    daily: dailyUpdate.topList.slice(0, 10),
+                    period: { dailyKey, weeklyKey },
+                }
             };
-
-            // Add rank/badge only if it was a GaoKao challenge
-            if (challengeType === 'gaokao') {
-                responseData.rank = currentRank;
-                responseData.badge = badge;
-            }
 
             return new Response(JSON.stringify(responseData), { headers: baseHeaders });
         } // End /api/submit
@@ -980,16 +1310,3 @@ ${ocrError ? `\n圖片識別提示: ${ocrError}` : ''}
         return new Response(JSON.stringify({ error: errorMessage }), { status: status, headers: baseHeaders });
     }
 }; // End onRequest Handler
-
-
-// --- Helper function to convert rank to Chinese numerals (Unchanged) ---
-function convertToChineseRank(rank: number): string {
-    // ... (Implementation unchanged)
-    if (rank <= 0) return "零";
-    const chineseNumbers = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
-    if (rank <= 10) return chineseNumbers[rank];
-    else if (rank < 20) return "十" + chineseNumbers[rank - 10];
-    else if (rank % 10 === 0 && rank < 100) return chineseNumbers[Math.floor(rank / 10)] + "十";
-    else if (rank < 100) return chineseNumbers[Math.floor(rank / 10)] + "十" + chineseNumbers[rank % 10];
-    else return `${rank}`;
-}
