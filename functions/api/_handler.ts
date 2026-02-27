@@ -127,6 +127,17 @@ interface GeminiApiResponse {
     error?: GeminiErrorDetail;
 }
 
+interface GeminiGenerationConfig {
+    maxOutputTokens?: number;
+    temperature?: number;
+    topP?: number;
+    topK?: number;
+    responseMimeType?: string;
+    thinkingConfig?: {
+        thinkingBudget?: number;
+    };
+}
+
 
 // For scoring results returned to frontend (Keep as they are)
 interface SubmissionResult {
@@ -450,6 +461,23 @@ function parseStoredCounter(rawValue: string | null, fallbackOnInvalid = 0): num
         return fallbackOnInvalid;
     }
     return parsed;
+}
+
+function parseOcrLines(rawText: string): string[] {
+    const normalized = rawText
+        .replace(/```(?:\w+)?/g, '')
+        .replace(/```/g, '')
+        .replace(/\r\n/g, '\n')
+        .trim();
+
+    return normalized
+        .split('\n')
+        .map(line => line
+            .replace(/^\s*(?:第?\s*\d+\s*[\.、:：\)\]）-]?\s*)/, '')
+            .replace(/^\s*[-*•]\s*/, '')
+            .trim()
+        )
+        .filter(line => line.length > 0);
 }
 
 function parseNonNegativeInt(rawValue: string | undefined, fallback: number): number {
@@ -854,7 +882,7 @@ async function getLeaderboardBundle(kv: KVNamespace, limit: number): Promise<{
 }
 
 // --- Gemini API Call Function (Unchanged) ---
-async function callGeminiAPI(apiKey: string, model: string, contents: GeminiContent[], generationConfig?: { maxOutputTokens?: number; temperature?: number; }): Promise<GeminiApiResponse> {
+async function callGeminiAPI(apiKey: string, model: string, contents: GeminiContent[], generationConfig?: GeminiGenerationConfig): Promise<GeminiApiResponse> {
     // ... (Implementation unchanged from the provided snippet, including retry logic)
     const url = `${GEMINI_API_BASE_URL}${model}:generateContent`;
     let lastError: any = null;
@@ -1595,8 +1623,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             let ocrWarning: string | null = null;
             let splitAnswers: string[] = [];
 
-            // Dynamically create the prompt based on expected question count
-            const ocrPromptText = `这是一张包含${expectedQuestionCount}个手写简体中文答案的图片，按从上到下的顺序排列。请准确识别每个答案，并只用换行符（\\n）分隔返回${expectedQuestionCount}个结果。注意：圖片是學生提交的默寫考試內容，識別過程中務必保持中文字形原貌，絕對不要修正或添加任何其他文字、解释、编号或格式。如果筆畫不清晰要直接視為錯誤答案。如果字形有錯誤直接視為錯誤答案。識別過程中絕對不要做語意分析，審閱預期中要保持學生有很大概率會寫錯的警惕心。如果某个答案无法识别，请在那一行输出 "[無法識別]"。`;
+            // Keep OCR instruction compact to reduce token waste and truncation risk.
+            const ocrPromptText = [
+                `你是嚴格 OCR 引擎。`,
+                `請按從上到下順序，輸出 ${expectedQuestionCount} 行手寫中文答案。`,
+                `每行僅輸出答案文字，不要編號、不要解釋、不要其他內容。`,
+                `若某行無法識別，該行輸出 [無法識別]。`
+            ].join('\n');
             console.log(`Using OCR prompt for ${expectedQuestionCount} answers.`);
 
             const ocrContents: GeminiContent[] = [{
@@ -1606,36 +1639,66 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 ]
             }];
 
-            // ... (Rest of OCR call, error handling, splitting logic is the same as before, using expectedQuestionCount)
+            // OCR call with retry when truncated / line count insufficient.
             try {
-                const ocrMaxOutputTokens = Math.min(1024, Math.max(256, expectedQuestionCount * 40));
-                const geminiResult = await callGeminiAPI(
-                    env.GEMINI_API_KEY,
-                    GEMINI_VISION_MODEL,
-                    ocrContents,
-                    { maxOutputTokens: ocrMaxOutputTokens, temperature: 0 }
-                );
+                let ocrFinishReason: string | undefined;
+                const ocrAttempts = [4096, 8192];
+
+                for (let attemptIndex = 0; attemptIndex < ocrAttempts.length; attemptIndex++) {
+                    const maxOutputTokens = ocrAttempts[attemptIndex];
+                    const geminiResult = await callGeminiAPI(
+                        env.GEMINI_API_KEY,
+                        GEMINI_VISION_MODEL,
+                        ocrContents,
+                        {
+                            maxOutputTokens,
+                            temperature: 0,
+                            responseMimeType: 'text/plain',
+                            thinkingConfig: { thinkingBudget: 0 },
+                        }
+                    );
+
+                    const candidate = geminiResult.candidates?.[0];
+                    const part = candidate?.content?.parts?.[0];
+                    ocrFinishReason = candidate?.finishReason;
+                    console.log(`Gemini OCR candidate finish reason: ${ocrFinishReason} for ${challengeType} challenge ${challengeIdentifier} (Attempt ${attemptIndex + 1}, maxTokens=${maxOutputTokens})`);
+
+                    if (ocrFinishReason && ocrFinishReason !== "STOP") {
+                        console.warn(`OCR process potentially incomplete. Finish Reason: ${ocrFinishReason}`);
+                        ocrWarning = `AI處理可能未完成 (${ocrFinishReason})。`;
+                    }
+
+                    if (part && 'text' in part) {
+                        recognizedTextCombined = part.text.trim();
+                    } else if (geminiResult.error) {
+                        ocrError = `AI OCR 服務錯誤: ${geminiResult.error.message}`;
+                        console.error(`OCR API Error from structure for ${challengeType} challenge ${challengeIdentifier}:`, geminiResult.error);
+                        break;
+                    } else {
+                        ocrError = "AI OCR 返回了非預期的響應格式 (無文本部分)。";
+                        console.warn(`OCR Result format issue for ${challengeType} challenge ${challengeIdentifier}. Full Response:`, JSON.stringify(geminiResult));
+                        break;
+                    }
+
+                    if (recognizedTextCombined) {
+                        splitAnswers = parseOcrLines(recognizedTextCombined);
+                    }
+
+                    const shouldRetry =
+                        attemptIndex < ocrAttempts.length - 1 &&
+                        (
+                            ocrFinishReason === "MAX_TOKENS" ||
+                            (recognizedTextCombined && splitAnswers.length < expectedQuestionCount)
+                        );
+                    if (shouldRetry) {
+                        console.warn(`Retrying OCR due to potential truncation. expected=${expectedQuestionCount}, got=${splitAnswers.length}, finishReason=${ocrFinishReason}`);
+                        continue;
+                    }
+                    break;
+                }
+
                 const ocrDuration = Date.now() - ocrStartTime;
                 console.log(`Gemini OCR completed for ${challengeType} challenge ${challengeIdentifier} in ${ocrDuration}ms.`);
-
-                const candidate = geminiResult.candidates?.[0];
-                const part = candidate?.content?.parts?.[0];
-                const ocrFinishReason = candidate?.finishReason;
-                console.log(`Gemini OCR candidate finish reason: ${ocrFinishReason} for ${challengeType} challenge ${challengeIdentifier}`);
-                if (ocrFinishReason && ocrFinishReason !== "STOP") {
-                    console.warn(`OCR process potentially incomplete. Finish Reason: ${ocrFinishReason}`);
-                    ocrWarning = `AI處理可能未完成 (${ocrFinishReason})。`;
-                }
-
-                if (part && 'text' in part) {
-                    recognizedTextCombined = part.text.trim();
-                } else if (geminiResult.error) {
-                    ocrError = `AI OCR 服務錯誤: ${geminiResult.error.message}`;
-                    console.error(`OCR API Error from structure for ${challengeType} challenge ${challengeIdentifier}:`, geminiResult.error);
-                } else {
-                    ocrError = "AI OCR 返回了非預期的響應格式 (無文本部分)。";
-                    console.warn(`OCR Result format issue for ${challengeType} challenge ${challengeIdentifier}. Full Response:`, JSON.stringify(geminiResult));
-                }
 
                 if (!recognizedTextCombined) {
                     if (ocrFinishReason === "SAFETY") ocrError = "AI OCR 因安全設置拒絕處理圖片內容。";
@@ -1644,16 +1707,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                     else ocrError = "AI OCR 未能識別出任何文本內容。";
                     console.warn(`OCR Result empty for ${challengeType} challenge ${challengeIdentifier}. Finish Reason: ${ocrFinishReason}`);
                 } else {
-                    const normalizedOcrOutput = recognizedTextCombined
-                        .replace(/```(?:\w+)?/g, '')
-                        .replace(/```/g, '')
-                        .trim();
-                    console.log(`Raw OCR result for ${challengeType} challenge ${challengeIdentifier}: "${normalizedOcrOutput.replace(/\n/g, '\\n')}"`);
-                    splitAnswers = normalizedOcrOutput
-                        .split(/\r?\n/)
-                        .map(s => s.replace(/^\s*(?:第?\d+\s*[\.、:：\)\]）]?\s*)/, '').trim())
-                        .filter(s => s.length > 0);
-
+                    console.log(`Raw OCR result for ${challengeType} challenge ${challengeIdentifier}: "${recognizedTextCombined.replace(/\n/g, '\\n')}"`);
                     if (splitAnswers.length !== expectedQuestionCount) {
                         console.warn(`OCR split count mismatch for ${challengeType} challenge ${challengeIdentifier}: expected ${expectedQuestionCount}, got ${splitAnswers.length}. Raw: "${recognizedTextCombined}"`);
                         const splitError = `AI OCR 未能準確分割出 ${expectedQuestionCount} 個答案 (找到了 ${splitAnswers.length} 個)。答案可能擠在一起或部分無法識別。`;
