@@ -289,9 +289,11 @@
             gap: 10px;
             align-items: center;
             margin-bottom: 10px;
+            flex-wrap: wrap;
         }
 
-        #username-input {
+        #username-input,
+        #password-input {
             flex: 1;
             padding: 10px 12px;
             border: 1px solid var(--ghibli-border-color);
@@ -299,9 +301,11 @@
             font-family: var(--font-primary);
             color: var(--ghibli-text);
             background-color: rgba(255, 255, 255, 0.9);
+            min-width: 160px;
         }
 
-        #username-input:focus {
+        #username-input:focus,
+        #password-input:focus {
             outline: 2px solid rgba(138, 163, 163, 0.25);
             border-color: var(--ghibli-primary);
         }
@@ -913,9 +917,11 @@
             <div class="account-panel">
                 <div class="account-form">
                     <input id="username-input" type="text" maxlength="20" placeholder="輸入用戶名（中文/字母/數字）">
+                    <input id="password-input" type="password" maxlength="64" placeholder="輸入密碼（首次將自動註冊）">
                     <button id="login-btn" class="secondary-btn">登錄</button>
+                    <button id="logout-btn" class="secondary-btn">登出</button>
                 </div>
-                <p id="account-status">尚未登錄。請先輸入用戶名。</p>
+                <p id="account-status">尚未登錄。請先輸入用戶名與密碼。</p>
             </div>
             <div class="experience-tips">
                 <p><strong>操作流程：</strong>先選模式 → 按順序分行作答 → 拍清晰照片 → 等待評閱</p>
@@ -989,7 +995,9 @@
         const selectChapterBtn = document.getElementById('select-chapter-btn'); // (Req 4) New button
         const backToChaptersBtn = document.getElementById('back-to-chapters-btn');
         const usernameInput = document.getElementById('username-input');
+        const passwordInput = document.getElementById('password-input');
         const loginBtn = document.getElementById('login-btn');
+        const logoutBtn = document.getElementById('logout-btn');
         const accountStatus = document.getElementById('account-status');
         const leaderboardListDiv = document.getElementById('leaderboard-list');
         const leaderboardMetaDiv = document.getElementById('leaderboard-meta');
@@ -1023,6 +1031,7 @@
         const API_RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
         const CHAPTER_CACHE_TTL_MS = 5 * 60 * 1000;
         const USERNAME_STORAGE_KEY = 'moxie_username';
+        const AUTH_TOKEN_STORAGE_KEY = 'moxie_auth_token';
 
         const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -1122,9 +1131,36 @@
             }
         }
 
+        function readStoredToken() {
+            return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '';
+        }
+
+        function writeStoredToken(token) {
+            if (token) {
+                localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+            } else {
+                localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+            }
+        }
+
+        function getAuthHeaders(extraHeaders = {}, tokenOverride = '') {
+            const headers = { ...extraHeaders };
+            const token = tokenOverride || currentUser?.token || '';
+            if (token) {
+                headers.Authorization = `Bearer ${token}`;
+            }
+            return headers;
+        }
+
+        function clearCurrentUser() {
+            currentUser = null;
+            writeStoredToken('');
+            renderAccountStatus();
+        }
+
         function renderAccountStatus() {
             if (!currentUser) {
-                accountStatus.textContent = '尚未登錄。請先輸入用戶名。';
+                accountStatus.textContent = '尚未登錄。請先輸入用戶名與密碼。';
                 return;
             }
 
@@ -1138,16 +1174,22 @@
         }
 
         function requireLogin() {
-            if (currentUser && currentUser.username) return true;
-            displayError('請先輸入用戶名並登錄，再開始挑戰。', statusDiv);
+            if (currentUser && currentUser.username && currentUser.token) return true;
+            displayError('請先輸入用戶名與密碼登錄，再開始挑戰。', statusDiv);
             usernameInput.focus();
             return false;
         }
 
-        async function loginWithUsername(rawUsername, options = {}) {
+        async function loginWithUsername(rawUsername, rawPassword, options = {}) {
             const username = (rawUsername || '').trim();
+            const password = (rawPassword || '').trim();
             if (!username) {
                 if (!options.silent) displayError('請輸入用戶名。', statusDiv);
+                return false;
+            }
+            if (!password) {
+                if (!options.silent) displayError('請輸入密碼。', statusDiv);
+                passwordInput.focus();
                 return false;
             }
 
@@ -1158,7 +1200,7 @@
                     {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ username }),
+                        body: JSON.stringify({ username, password }),
                     },
                     { retries: 0 }
                 );
@@ -1166,18 +1208,23 @@
                 currentUser = {
                     userId: data.user.userId,
                     username: data.user.username,
+                    token: data.token,
+                    expiresAt: data.expiresAt,
                     stats: data.stats,
                 };
                 usernameInput.value = currentUser.username;
                 writeStoredUsername(currentUser.username);
+                writeStoredToken(currentUser.token);
+                passwordInput.value = '';
                 renderAccountStatus();
-                statusDiv.textContent = `狀態：已登錄為 ${currentUser.username}，請選擇挑戰模式。`;
+                statusDiv.textContent = data.isNewUser
+                    ? `狀態：已創建新賬號 ${currentUser.username}，請選擇挑戰模式。`
+                    : `狀態：已登錄為 ${currentUser.username}，請選擇挑戰模式。`;
                 await refreshLeaderboard();
                 return true;
             } catch (error) {
                 if (!options.silent) displayError(`登錄失敗：${error.message || '未知錯誤'}`, statusDiv);
-                currentUser = null;
-                renderAccountStatus();
+                clearCurrentUser();
                 return false;
             } finally {
                 setLoadingState(loginBtn, false, '登錄');
@@ -1222,9 +1269,12 @@
         }
 
         async function refreshLeaderboard() {
-            const query = currentUser?.username ? `?username=${encodeURIComponent(currentUser.username)}&limit=20` : '?limit=20';
             try {
-                const data = await requestJson(`/leaderboard${query}`, { method: 'GET' }, { retries: 1, timeoutMs: 15000 });
+                const data = await requestJson(
+                    '/leaderboard?limit=20',
+                    { method: 'GET', headers: getAuthHeaders() },
+                    { retries: 1, timeoutMs: 15000 }
+                );
                 leaderboardState = data;
                 if (data.me && currentUser && data.me.userId === currentUser.userId) {
                     currentUser.stats = data.me.stats;
@@ -1232,6 +1282,10 @@
                 }
             } catch (error) {
                 console.error('Leaderboard fetch failed:', error);
+                if (error?.status === 401) {
+                    clearCurrentUser();
+                    statusDiv.textContent = '狀態：登錄已過期，請重新登錄。';
+                }
                 leaderboardState = { period: { dailyKey: '', weeklyKey: '' }, total: [], weekly: [], daily: [], me: null };
             }
             renderLeaderboard();
@@ -1407,13 +1461,39 @@
         // --- Event Listeners ---
 
         loginBtn.addEventListener('click', async () => {
-            await loginWithUsername(usernameInput.value);
+            await loginWithUsername(usernameInput.value, passwordInput.value);
         });
 
         usernameInput.addEventListener('keydown', async (event) => {
             if (event.key === 'Enter') {
                 event.preventDefault();
-                await loginWithUsername(usernameInput.value);
+                await loginWithUsername(usernameInput.value, passwordInput.value);
+            }
+        });
+
+        passwordInput.addEventListener('keydown', async (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                await loginWithUsername(usernameInput.value, passwordInput.value);
+            }
+        });
+
+        logoutBtn.addEventListener('click', async () => {
+            if (!currentUser?.token) {
+                clearCurrentUser();
+                statusDiv.textContent = '狀態：已退出登錄。';
+                return;
+            }
+            setLoadingState(logoutBtn, true, '登出中');
+            try {
+                await requestJson('/logout', { method: 'POST', headers: getAuthHeaders() }, { retries: 0 });
+            } catch (error) {
+                console.warn('Logout request failed:', error);
+            } finally {
+                clearCurrentUser();
+                statusDiv.textContent = '狀態：已退出登錄。';
+                setLoadingState(logoutBtn, false, '登出');
+                await refreshLeaderboard();
             }
         });
 
@@ -1435,15 +1515,19 @@
         gaokaoChallengeBtn.addEventListener('click', async () => {
             if (!requireLogin()) return;
             if (isLoading) return; // Prevent multiple clicks
-            isLoading = true;
             resetUI(); // Full reset
+            isLoading = true;
             setLoadingState(gaokaoChallengeBtn, true, '正在出題');
             setLoadingState(selectChapterBtn, true); // Disable other button
             statusDiv.textContent = '正在從雲端獲取高考挑戰題組...';
             statusDiv.style.display = 'block';
 
             try {
-                const setData = await requestJson('/start_gaokao_set', { method: 'GET' }, { retries: 1 });
+                const setData = await requestJson(
+                    '/start_gaokao_set',
+                    { method: 'GET', headers: getAuthHeaders() },
+                    { retries: 1 }
+                );
                 if (!setData || !setData.setId || !setData.questions || setData.questions.length === 0) {
                     throw new Error('未能從後端獲取有效的“挑戰高考”題組數據。');
                 }
@@ -1452,7 +1536,8 @@
                 currentChallengeIdentifier = setData.setId; // Store the setId
                 statusDiv.textContent = `高考挑戰題組已就緒 (ID: ${currentChallengeIdentifier.substring(0, 6)}...)！請提筆作答...`;
 
-                displayQuestions(setData.questions, `挑戰高考 (${setData.questions.length}題, 共 8 分)`);
+                const gaokaoScoreTarget = setData.questions.length * 2;
+                displayQuestions(setData.questions, `挑戰高考 (${setData.questions.length}題, 共 ${gaokaoScoreTarget} 分)`);
 
             } catch (error) {
                 console.error('Error fetching GaoKao questions:', error);
@@ -1472,8 +1557,8 @@
         selectChapterBtn.addEventListener('click', async () => {
             if (!requireLogin()) return;
             if (isLoading) return;
-            isLoading = true;
             resetUI(); // Full reset before showing chapters
+            isLoading = true;
             setLoadingState(selectChapterBtn, true, '加載篇目');
             setLoadingState(gaokaoChallengeBtn, true); // Disable other button
             statusDiv.textContent = '正在加載篇目列表...';
@@ -1559,7 +1644,8 @@
 
                 // Display the questions for the selected chapter
                 const questionCount = chapterQuestionsData.questions.length;
-                displayQuestions(chapterQuestionsData.questions, `《${currentChapterTitle}》 (${questionCount}題, 共 8 分)`); // Update title dynamically
+                const chapterScoreTarget = questionCount * 2;
+                displayQuestions(chapterQuestionsData.questions, `《${currentChapterTitle}》 (${questionCount}題, 共 ${chapterScoreTarget} 分)`); // Update title dynamically
 
                 // Hide chapter selection, clear results
                 chapterSelectionDiv.style.display = 'none';
@@ -1629,8 +1715,8 @@
         // --- Submit Button Listener (Handles both modes) ---
         submitBtn.addEventListener('click', async () => {
             if (isSubmitting) return;
-            if (!currentUser || !currentUser.username) {
-                displayError('請先登錄用戶名後再提交。', statusDiv);
+            if (!currentUser || !currentUser.username || !currentUser.token) {
+                displayError('請先登錄後再提交。', statusDiv);
                 usernameInput.focus();
                 return;
             }
@@ -1658,7 +1744,6 @@
             if (rightColumn) rightColumn.scrollTo({ top: 0, behavior: 'smooth' });
 
             const formData = new FormData();
-            formData.append('username', currentUser.username);
             // Append the correct identifier based on challenge type
             if (currentChallengeType === 'gaokao') {
                 formData.append('setId', currentChallengeIdentifier);
@@ -1673,7 +1758,11 @@
             formData.append('handwritingImage', compressedImageBlob, filename);
 
             try {
-                const resultData = await requestJson('/submit', { method: 'POST', body: formData }, { retries: 0, timeoutMs: 120000 });
+                const resultData = await requestJson(
+                    '/submit',
+                    { method: 'POST', headers: getAuthHeaders(), body: formData },
+                    { retries: 0, timeoutMs: 120000 }
+                );
                 console.log("Result Data Received:", resultData);
 
                 // --- Render Results ---
@@ -1774,11 +1863,30 @@
                     currentUser.stats = resultData.userStats;
                     renderAccountStatus();
                 }
-                await refreshLeaderboard();
+                if (resultData.leaderboardSnapshot) {
+                    leaderboardState = {
+                        period: resultData.leaderboardSnapshot.period || leaderboardState.period,
+                        total: Array.isArray(resultData.leaderboardSnapshot.total) ? resultData.leaderboardSnapshot.total : [],
+                        weekly: Array.isArray(resultData.leaderboardSnapshot.weekly) ? resultData.leaderboardSnapshot.weekly : [],
+                        daily: Array.isArray(resultData.leaderboardSnapshot.daily) ? resultData.leaderboardSnapshot.daily : [],
+                        me: currentUser ? {
+                            userId: currentUser.userId,
+                            username: currentUser.username,
+                            stats: currentUser.stats,
+                        } : null,
+                    };
+                    renderLeaderboard();
+                } else {
+                    await refreshLeaderboard();
+                }
 
 
             } catch (error) {
                 console.error('Submit error:', error);
+                if (error?.status === 401) {
+                    clearCurrentUser();
+                    statusDiv.textContent = '狀態：登錄已過期，請重新登錄。';
+                }
                 displayError(`提交或處理失敗: ${error.message || '未知客戶端錯誤'}`, resultDiv); // Display error in result area
             } finally {
                 isSubmitting = false;
@@ -1792,13 +1900,41 @@
         // --- Initial Setup ---
         resetUI();
         renderAccountStatus();
-        refreshLeaderboard();
-
         (async () => {
             const storedUsername = readStoredUsername();
-            if (!storedUsername) return;
-            usernameInput.value = storedUsername;
-            await loginWithUsername(storedUsername, { silent: true });
+            if (storedUsername) {
+                usernameInput.value = storedUsername;
+            }
+
+            const storedToken = readStoredToken();
+            if (storedToken) {
+                try {
+                    const me = await requestJson(
+                        '/me',
+                        { method: 'GET', headers: getAuthHeaders({}, storedToken) },
+                        { retries: 0, timeoutMs: 15000 }
+                    );
+                    currentUser = {
+                        userId: me.user.userId,
+                        username: me.user.username,
+                        token: storedToken,
+                        expiresAt: me.expiresAt,
+                        stats: me.stats,
+                    };
+                    usernameInput.value = currentUser.username;
+                    renderAccountStatus();
+                    statusDiv.textContent = `狀態：已恢復登錄為 ${currentUser.username}，請選擇挑戰模式。`;
+                } catch (error) {
+                    writeStoredToken('');
+                    currentUser = null;
+                    renderAccountStatus();
+                    if (error?.status === 401) {
+                        statusDiv.textContent = '狀態：登錄已過期，請重新輸入密碼登錄。';
+                    }
+                }
+            }
+
+            await refreshLeaderboard();
         })();
     </script>
 

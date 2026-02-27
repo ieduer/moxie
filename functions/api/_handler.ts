@@ -14,12 +14,31 @@ const MAX_QUESTIONS_PER_GAOKAO_SET = 4; // Target number of questions for "挑�
 const MAX_FEEDBACK_TOKENS = 3000;
 const API_RETRY_COUNT = 2;
 const API_RETRY_DELAY_MS = 1500;
-const TOTAL_SCORE_TARGET = 8; // Target total score for both challenge types
+const SCORE_PER_QUESTION = 2;
+const REFERENCE_QUESTION_COUNT_FOR_POINTS = 4;
+const MAX_POINTS_BASE = 80;
 const LEADERBOARD_TOP_LIMIT = 50;
+const LEADERBOARD_SCAN_BATCH_SIZE = 1000;
 const STATS_PERIOD_TTL_SECONDS = 60 * 60 * 24 * 120; // 120 days
+const SESSION_TTL_SECONDS = 60 * 60 * 24 * 14; // 14 days
+const SUBMIT_COOLDOWN_SECONDS = 45;
+const SUBMIT_LOCK_TTL_SECONDS = 25;
+const GAOKAO_SET_LOCK_TTL_SECONDS = 300;
 const USERNAME_MIN_LENGTH = 2;
 const USERNAME_MAX_LENGTH = 20;
 const USERNAME_ALLOWED_REGEX = /^[\p{L}\p{N}_-]+$/u;
+const PASSWORD_MIN_LENGTH = 6;
+const PASSWORD_MAX_LENGTH = 64;
+const PASSWORD_HASH_ITERATIONS = 120000;
+
+const ALLOWED_ORIGIN_PATTERNS = [
+    /^https:\/\/([a-z0-9-]+\.)*bdfz\.net$/i,
+    /^https:\/\/([a-z0-9-]+\.)*bdfzer\.com$/i,
+    /^https:\/\/([a-z0-9-]+\.)*rdfzer\.com$/i,
+    /^https:\/\/[a-z0-9-]+\.pages\.dev$/i,
+    /^http:\/\/localhost(?::\d+)?$/i,
+    /^http:\/\/127\.0\.0\.1(?::\d+)?$/i,
+];
 
 // --- Type Definitions ---
 
@@ -81,6 +100,8 @@ interface QuestionSet {
     setId: string; // Unique ID for the entire set
     questions: QuestionInfo[]; // Array of generated questions
     createdAt: number; // Timestamp
+    ownerUserId: string;
+    usedAt?: number;
 }
 
 // Gemini API related types (Keep as they are)
@@ -115,6 +136,23 @@ interface UserProfile {
     username: string;
     createdAt: number;
     updatedAt: number;
+}
+
+interface UserAuthRecord {
+    userId: string;
+    username: string;
+    passwordSalt: string;
+    passwordHash: string;
+    createdAt: number;
+    updatedAt: number;
+}
+
+interface SessionRecord {
+    token: string;
+    userId: string;
+    username: string;
+    createdAt: number;
+    expiresAt: number;
 }
 
 interface UserStats {
@@ -248,6 +286,41 @@ function validateUsername(input: string): { normalized: string; display: string 
     return { normalized: normalizeUsername(display), display };
 }
 
+function validatePassword(input: string): string {
+    if (typeof input !== 'string') {
+        throw new Error('請輸入密碼。');
+    }
+    const password = input.trim();
+    if (password.length < PASSWORD_MIN_LENGTH || password.length > PASSWORD_MAX_LENGTH) {
+        throw new Error(`密碼長度需在 ${PASSWORD_MIN_LENGTH}-${PASSWORD_MAX_LENGTH} 字之間。`);
+    }
+    return password;
+}
+
+function createHttpError(status: number, message: string): Error & { status: number } {
+    const error = new Error(message) as Error & { status: number };
+    error.status = status;
+    return error;
+}
+
+function isAllowedOrigin(origin: string | null): boolean {
+    if (!origin) return true;
+    return ALLOWED_ORIGIN_PATTERNS.some(pattern => pattern.test(origin));
+}
+
+function buildCorsHeaders(origin: string | null): Record<string, string> {
+    const headers: Record<string, string> = {
+        'Content-Type': 'application/json;charset=UTF-8',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Vary': 'Origin',
+    };
+    if (origin && isAllowedOrigin(origin)) {
+        headers['Access-Control-Allow-Origin'] = origin;
+    }
+    return headers;
+}
+
 function getShanghaiDateTimeParts(nowMs: number): { year: number; month: number; day: number } {
     const shifted = new Date(nowMs + 8 * 60 * 60 * 1000);
     return {
@@ -278,6 +351,14 @@ function getProfileKey(userId: string): string {
     return `moxie:user:profile:${userId}`;
 }
 
+function getAuthKey(userId: string): string {
+    return `moxie:user:auth:${userId}`;
+}
+
+function getSessionKey(token: string): string {
+    return `moxie:session:${token}`;
+}
+
 function getStatsKey(scope: LeaderboardScope, period: string, userId: string): string {
     if (scope === 'total') {
         return `moxie:leaderboard:total:user:${userId}`;
@@ -285,11 +366,27 @@ function getStatsKey(scope: LeaderboardScope, period: string, userId: string): s
     return `moxie:leaderboard:${scope}:${period}:user:${userId}`;
 }
 
-function getTopKey(scope: LeaderboardScope, period: string): string {
+function getStatsPrefix(scope: LeaderboardScope, period: string): string {
     if (scope === 'total') {
-        return `moxie:leaderboard:total:top`;
+        return `moxie:leaderboard:total:user:`;
     }
-    return `moxie:leaderboard:${scope}:${period}:top`;
+    return `moxie:leaderboard:${scope}:${period}:user:`;
+}
+
+function getGaokaoSetKey(setId: string): string {
+    return `moxie:gaokao:set:${setId}`;
+}
+
+function getGaokaoSetLockKey(setId: string): string {
+    return `moxie:gaokao:set-lock:${setId}`;
+}
+
+function getSubmitLockKey(userId: string): string {
+    return `moxie:submit:lock:${userId}`;
+}
+
+function getSubmitCooldownKey(userId: string): string {
+    return `moxie:submit:cooldown:${userId}`;
 }
 
 async function getJsonKV<T>(kv: KVNamespace, key: string): Promise<T | null> {
@@ -301,10 +398,20 @@ async function putJsonKV(kv: KVNamespace, key: string, value: unknown, expiratio
     await kv.put(key, JSON.stringify(value), options);
 }
 
-function calculatePointsAwarded(totalScore: number): number {
-    const basePoints = Math.round(totalScore * 10); // 0-80
+function getScoreTarget(questionCount: number): number {
+    return Math.max(1, questionCount) * SCORE_PER_QUESTION;
+}
+
+function calculatePointsAwarded(totalScore: number, scoreTarget: number, questionCount: number): number {
+    const safeScoreTarget = Math.max(scoreTarget, 1);
+    const accuracy = Math.max(0, Math.min(1, totalScore / safeScoreTarget));
+    const difficultyFactor = Math.max(
+        0.8,
+        Math.min(1.5, Math.sqrt(Math.max(questionCount, 1) / REFERENCE_QUESTION_COUNT_FOR_POINTS))
+    );
+    const basePoints = Math.round(MAX_POINTS_BASE * accuracy * difficultyFactor);
     const participationBonus = 5;
-    const fullScoreBonus = totalScore >= TOTAL_SCORE_TARGET ? 15 : 0;
+    const fullScoreBonus = accuracy >= 1 ? 15 : 0;
     return basePoints + participationBonus + fullScoreBonus;
 }
 
@@ -361,20 +468,6 @@ function sortLeaderboard(entries: LeaderboardEntry[]): LeaderboardEntry[] {
     });
 }
 
-async function upsertLeaderboardTopList(
-    kv: KVNamespace,
-    topKey: string,
-    stats: UserStats,
-    expirationTtl?: number
-): Promise<LeaderboardEntry[]> {
-    const existing = await getJsonKV<LeaderboardEntry[]>(kv, topKey) ?? [];
-    const filtered = existing.filter(entry => entry.userId !== stats.userId);
-    filtered.push(toLeaderboardEntry(stats));
-    const sorted = sortLeaderboard(filtered).slice(0, LEADERBOARD_TOP_LIMIT);
-    await putJsonKV(kv, topKey, sorted, expirationTtl);
-    return sorted;
-}
-
 async function updateScopedStats(
     kv: KVNamespace,
     scope: LeaderboardScope,
@@ -383,9 +476,8 @@ async function updateScopedStats(
     username: string,
     pointsAwarded: number,
     totalScore: number
-): Promise<{ stats: UserStats; topList: LeaderboardEntry[] }> {
+): Promise<UserStats> {
     const statsKey = getStatsKey(scope, period, userId);
-    const topKey = getTopKey(scope, period);
     const now = Date.now();
     const current = await getJsonKV<UserStats>(kv, statsKey);
     const nextStats: UserStats = {
@@ -399,8 +491,7 @@ async function updateScopedStats(
 
     const ttl = scope === 'total' ? undefined : STATS_PERIOD_TTL_SECONDS;
     await putJsonKV(kv, statsKey, nextStats, ttl);
-    const topList = await upsertLeaderboardTopList(kv, topKey, nextStats, ttl);
-    return { stats: nextStats, topList };
+    return nextStats;
 }
 
 async function ensureUserProfile(kv: KVNamespace, userId: string, username: string): Promise<UserProfile> {
@@ -415,6 +506,123 @@ async function ensureUserProfile(kv: KVNamespace, userId: string, username: stri
     };
     await putJsonKV(kv, key, profile);
     return profile;
+}
+
+function toBase64Url(bytes: Uint8Array): string {
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function generateSecureToken(size = 32): string {
+    const bytes = new Uint8Array(size);
+    crypto.getRandomValues(bytes);
+    return toBase64Url(bytes);
+}
+
+async function hashPassword(password: string, salt: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        encoder.encode(password),
+        'PBKDF2',
+        false,
+        ['deriveBits']
+    );
+    const hashBuffer = await crypto.subtle.deriveBits(
+        {
+            name: 'PBKDF2',
+            hash: 'SHA-256',
+            salt: encoder.encode(salt),
+            iterations: PASSWORD_HASH_ITERATIONS,
+        },
+        keyMaterial,
+        256
+    );
+    return toBase64Url(new Uint8Array(hashBuffer));
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+    if (a.length !== b.length) return false;
+    let mismatch = 0;
+    for (let i = 0; i < a.length; i++) {
+        mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    }
+    return mismatch === 0;
+}
+
+async function authenticateAndIssueSession(
+    kv: KVNamespace,
+    userId: string,
+    username: string,
+    password: string
+): Promise<{ session: SessionRecord; isNewUser: boolean; }> {
+    const authKey = getAuthKey(userId);
+    const now = Date.now();
+    const existingAuth = await getJsonKV<UserAuthRecord>(kv, authKey);
+    let isNewUser = false;
+
+    if (!existingAuth) {
+        const passwordSalt = generateSecureToken(16);
+        const passwordHash = await hashPassword(password, passwordSalt);
+        const authRecord: UserAuthRecord = {
+            userId,
+            username,
+            passwordSalt,
+            passwordHash,
+            createdAt: now,
+            updatedAt: now,
+        };
+        await putJsonKV(kv, authKey, authRecord);
+        isNewUser = true;
+    } else {
+        const passwordHash = await hashPassword(password, existingAuth.passwordSalt);
+        if (!timingSafeEqual(passwordHash, existingAuth.passwordHash)) {
+            throw createHttpError(401, '用戶名或密碼錯誤。');
+        }
+        if (existingAuth.username !== username) {
+            existingAuth.username = username;
+            existingAuth.updatedAt = now;
+            await putJsonKV(kv, authKey, existingAuth);
+        }
+    }
+
+    await ensureUserProfile(kv, userId, username);
+    const token = generateSecureToken(32);
+    const session: SessionRecord = {
+        token,
+        userId,
+        username,
+        createdAt: now,
+        expiresAt: now + (SESSION_TTL_SECONDS * 1000),
+    };
+    await putJsonKV(kv, getSessionKey(token), session, SESSION_TTL_SECONDS);
+    return { session, isNewUser };
+}
+
+function extractBearerToken(request: Request): string | null {
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader) return null;
+    const match = authHeader.match(/^Bearer\s+(.+)$/i);
+    if (!match) return null;
+    const token = match[1].trim();
+    return token || null;
+}
+
+async function getSessionFromRequest(request: Request, kv: KVNamespace, required = true): Promise<SessionRecord | null> {
+    const token = extractBearerToken(request);
+    if (!token) {
+        if (!required) return null;
+        throw createHttpError(401, '請先登錄。');
+    }
+    const session = await getJsonKV<SessionRecord>(kv, getSessionKey(token));
+    if (!session || session.expiresAt <= Date.now() || session.userId.length === 0) {
+        await kv.delete(getSessionKey(token)).catch(() => undefined);
+        throw createHttpError(401, '登錄已過期，請重新登錄。');
+    }
+    return session;
 }
 
 async function getUserStatsSummary(kv: KVNamespace, userId: string, username: string): Promise<{
@@ -462,6 +670,34 @@ async function getUserStatsSummary(kv: KVNamespace, userId: string, username: st
     };
 }
 
+async function readLeaderboardScope(
+    kv: KVNamespace,
+    scope: LeaderboardScope,
+    period: string,
+    limit: number
+): Promise<LeaderboardEntry[]> {
+    const safeLimit = Math.max(1, Math.min(limit, LEADERBOARD_TOP_LIMIT));
+    const prefix = getStatsPrefix(scope, period);
+    let cursor: string | undefined = undefined;
+    const stats: UserStats[] = [];
+
+    while (true) {
+        const listResult = await kv.list({ prefix, cursor, limit: LEADERBOARD_SCAN_BATCH_SIZE });
+        if (listResult.keys.length > 0) {
+            const batchStats = await Promise.all(
+                listResult.keys.map(key => getJsonKV<UserStats>(kv, key.name))
+            );
+            for (const item of batchStats) {
+                if (item) stats.push(item);
+            }
+        }
+        if (listResult.list_complete) break;
+        cursor = listResult.cursor;
+    }
+
+    return sortLeaderboard(stats.map(toLeaderboardEntry)).slice(0, safeLimit);
+}
+
 async function getLeaderboardBundle(kv: KVNamespace, limit: number): Promise<{
     period: { dailyKey: string; weeklyKey: string; };
     total: LeaderboardEntry[];
@@ -474,16 +710,16 @@ async function getLeaderboardBundle(kv: KVNamespace, limit: number): Promise<{
     const safeLimit = Math.max(1, Math.min(limit, LEADERBOARD_TOP_LIMIT));
 
     const [total, weekly, daily] = await Promise.all([
-        getJsonKV<LeaderboardEntry[]>(kv, getTopKey('total', 'all')),
-        getJsonKV<LeaderboardEntry[]>(kv, getTopKey('weekly', weeklyKey)),
-        getJsonKV<LeaderboardEntry[]>(kv, getTopKey('daily', dailyKey)),
+        readLeaderboardScope(kv, 'total', 'all', safeLimit),
+        readLeaderboardScope(kv, 'weekly', weeklyKey, safeLimit),
+        readLeaderboardScope(kv, 'daily', dailyKey, safeLimit),
     ]);
 
     return {
         period: { dailyKey, weeklyKey },
-        total: (total ?? []).slice(0, safeLimit),
-        weekly: (weekly ?? []).slice(0, safeLimit),
-        daily: (daily ?? []).slice(0, safeLimit),
+        total,
+        weekly,
+        daily,
     };
 }
 
@@ -691,16 +927,19 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const apiPath = resolveApiPath(params as Record<string, string | string[]>, url.pathname);
     // Extract query parameters for chapter selection
     const chapterOrderParam = url.searchParams.get('order');
-
-    const baseHeaders = {
-        'Content-Type': 'application/json;charset=UTF-8',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    };
+    const origin = request.headers.get('Origin');
+    const baseHeaders = buildCorsHeaders(origin);
+    const originAllowed = isAllowedOrigin(origin);
 
     if (request.method === 'OPTIONS') {
-        return new Response(null, { headers: baseHeaders });
+        if (!originAllowed) {
+            return new Response(JSON.stringify({ error: 'Origin not allowed.' }), { status: 403, headers: baseHeaders });
+        }
+        return new Response(null, { status: 204, headers: baseHeaders });
+    }
+
+    if (!originAllowed) {
+        return new Response(JSON.stringify({ error: 'Origin not allowed.' }), { status: 403, headers: baseHeaders });
     }
 
     console.log(`[${new Date().toISOString()}] Request: ${request.method} /api/${apiPath}${url.search}`);
@@ -735,30 +974,67 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             }
 
             const rawUsername = typeof requestBody?.username === 'string' ? requestBody.username : '';
+            const rawPassword = typeof requestBody?.password === 'string' ? requestBody.password : '';
             if (!rawUsername) {
                 return new Response(JSON.stringify({ error: '請輸入用戶名。' }), { status: 400, headers: baseHeaders });
             }
 
             let normalized = '';
             let display = '';
+            let password = '';
             try {
                 const validated = validateUsername(rawUsername);
                 normalized = validated.normalized;
                 display = validated.display;
+                password = validatePassword(rawPassword);
             } catch (validationError: any) {
-                return new Response(JSON.stringify({ error: validationError.message || '用戶名格式不正確。' }), { status: 400, headers: baseHeaders });
+                return new Response(JSON.stringify({ error: validationError.message || '登錄信息格式不正確。' }), { status: 400, headers: baseHeaders });
             }
 
-            await ensureUserProfile(env.SESSION_KV, normalized, display);
-            const stats = await getUserStatsSummary(env.SESSION_KV, normalized, display);
+            const { session, isNewUser } = await authenticateAndIssueSession(env.SESSION_KV, normalized, display, password);
+            const stats = await getUserStatsSummary(env.SESSION_KV, session.userId, session.username);
 
             return new Response(JSON.stringify({
                 user: {
-                    userId: normalized,
-                    username: display,
+                    userId: session.userId,
+                    username: session.username,
                 },
                 stats,
+                token: session.token,
+                expiresAt: session.expiresAt,
+                isNewUser,
             }), { headers: baseHeaders });
+        }
+
+        if (apiPath === 'me' && request.method === 'GET') {
+            const missingBindings = getMissingBindings(env, ['SESSION_KV'] as const);
+            if (missingBindings.length > 0) {
+                return createMissingBindingsResponse(missingBindings, baseHeaders);
+            }
+
+            const session = await getSessionFromRequest(request, env.SESSION_KV, true);
+            const stats = await getUserStatsSummary(env.SESSION_KV, session.userId, session.username);
+            return new Response(JSON.stringify({
+                user: {
+                    userId: session.userId,
+                    username: session.username,
+                },
+                stats,
+                expiresAt: session.expiresAt,
+            }), { headers: baseHeaders });
+        }
+
+        if (apiPath === 'logout' && request.method === 'POST') {
+            const missingBindings = getMissingBindings(env, ['SESSION_KV'] as const);
+            if (missingBindings.length > 0) {
+                return createMissingBindingsResponse(missingBindings, baseHeaders);
+            }
+
+            const token = extractBearerToken(request);
+            if (token) {
+                await env.SESSION_KV.delete(getSessionKey(token));
+            }
+            return new Response(JSON.stringify({ success: true }), { headers: baseHeaders });
         }
 
         if (apiPath === 'leaderboard' && request.method === 'GET') {
@@ -771,16 +1047,11 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             const limit = limitParam ? parseInt(limitParam, 10) : 20;
             const bundle = await getLeaderboardBundle(env.SESSION_KV, isNaN(limit) ? 20 : limit);
 
-            const usernameParam = url.searchParams.get('username');
             let me: { userId: string; username: string; stats: Awaited<ReturnType<typeof getUserStatsSummary>>; } | null = null;
-            if (typeof usernameParam === 'string' && usernameParam.trim()) {
-                try {
-                    const { normalized, display } = validateUsername(usernameParam);
-                    const stats = await getUserStatsSummary(env.SESSION_KV, normalized, display);
-                    me = { userId: normalized, username: display, stats };
-                } catch {
-                    me = null;
-                }
+            const maybeSession = await getSessionFromRequest(request, env.SESSION_KV, false);
+            if (maybeSession) {
+                const stats = await getUserStatsSummary(env.SESSION_KV, maybeSession.userId, maybeSession.username);
+                me = { userId: maybeSession.userId, username: maybeSession.username, stats };
             }
 
             return new Response(JSON.stringify({
@@ -795,6 +1066,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             if (missingBindings.length > 0) {
                 return createMissingBindingsResponse(missingBindings, baseHeaders);
             }
+            const session = await getSessionFromRequest(request, env.SESSION_KV, true);
 
             console.log("Processing /api/start_gaokao_set request using processed poems.json data");
             const poemData = getPreparedPoemData();
@@ -824,9 +1096,14 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             console.log(`Selected ${generatedQuestions.length} questions from all poems for GaoKao setId: ${setId}`);
 
             // Store the generated set in KV
-            const newSet: QuestionSet = { setId, questions: generatedQuestions, createdAt: Date.now() };
+            const newSet: QuestionSet = {
+                setId,
+                questions: generatedQuestions,
+                createdAt: Date.now(),
+                ownerUserId: session.userId,
+            };
             try {
-                await env.SESSION_KV.put(setId, JSON.stringify(newSet), { expirationTtl: KV_EXPIRATION_TTL_SECONDS });
+                await env.SESSION_KV.put(getGaokaoSetKey(setId), JSON.stringify(newSet), { expirationTtl: KV_EXPIRATION_TTL_SECONDS });
                 console.log(`Stored new GaoKao question set in KV with setId: ${setId} (${generatedQuestions.length} questions)`);
             } catch (kvError: any) {
                 console.error(`KV put error for GaoKao setId ${setId}:`, kvError);
@@ -892,13 +1169,26 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             }
 
             console.log("Processing /api/submit request");
+            const session = await getSessionFromRequest(request, env.SESSION_KV, true);
+            const userId = session.userId;
+            const username = session.username;
+            const submitLockKey = getSubmitLockKey(userId);
+            const submitCooldownKey = getSubmitCooldownKey(userId);
+            const submitLock = await env.SESSION_KV.get(submitLockKey);
+            if (submitLock) {
+                return new Response(JSON.stringify({ error: '上一份作答仍在處理中，請稍候。' }), { status: 429, headers: baseHeaders });
+            }
+            const submitCooldown = await env.SESSION_KV.get(submitCooldownKey);
+            if (submitCooldown) {
+                return new Response(JSON.stringify({ error: '提交過於頻繁，請稍後再試。' }), { status: 429, headers: baseHeaders });
+            }
+            await env.SESSION_KV.put(submitLockKey, Date.now().toString(), { expirationTtl: SUBMIT_LOCK_TTL_SECONDS });
 
             // --- Request Parsing and Validation ---
             const formData = await request.formData();
             const setIdValue = formData.get('setId'); // For GaoKao challenge
             const chapterOrderValue = formData.get('chapterOrder'); // For Chapter challenge
             const imageValue = formData.get('handwritingImage');
-            const usernameValue = formData.get('username');
             let imageFile: File;
 
             let challengeType: 'gaokao' | 'chapter' | 'unknown' = 'unknown';
@@ -927,29 +1217,24 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             imageFile = imageValue as File;
             console.log(`Validation passed for ${challengeType} challenge ${challengeIdentifier}. Image: ${imageFile.name}, Size: ${imageFile.size}, Type: ${imageFile.type}`);
 
-            if (typeof usernameValue !== 'string' || !usernameValue.trim()) {
-                return new Response(JSON.stringify({ error: '請先使用用戶名登錄後再提交。' }), { status: 400, headers: baseHeaders });
-            }
-            let userId = '';
-            let username = '';
-            try {
-                const validated = validateUsername(usernameValue);
-                userId = validated.normalized;
-                username = validated.display;
-            } catch (validationError: any) {
-                return new Response(JSON.stringify({ error: validationError.message || '用戶名格式不正確。' }), { status: 400, headers: baseHeaders });
-            }
-            await ensureUserProfile(env.SESSION_KV, userId, username);
-
 
             // --- Retrieve Correct Answers and Question Info ---
             let questionsToScore: QuestionInfo[] = [];
             let expectedQuestionCount = 0;
+            let gaokaoSetStorageKey: string | null = null;
 
             if (challengeType === 'gaokao') {
                 let questionSet: QuestionSet | null = null;
+                gaokaoSetStorageKey = getGaokaoSetKey(challengeIdentifier);
+                const setLockKey = getGaokaoSetLockKey(challengeIdentifier);
+                const setLock = await env.SESSION_KV.get(setLockKey);
+                if (setLock) {
+                    return new Response(JSON.stringify({ error: "此題組正在提交中，請勿重複提交。" }), { status: 409, headers: baseHeaders });
+                }
+                await env.SESSION_KV.put(setLockKey, Date.now().toString(), { expirationTtl: GAOKAO_SET_LOCK_TTL_SECONDS });
+
                 try {
-                    questionSet = await env.SESSION_KV.get<QuestionSet>(challengeIdentifier, 'json');
+                    questionSet = await env.SESSION_KV.get<QuestionSet>(gaokaoSetStorageKey, 'json');
                 } catch (kvError: any) {
                     console.error(`KV get error for GaoKao setId ${challengeIdentifier}:`, kvError);
                     return new Response(JSON.stringify({ error: "無法獲取“挑戰高考”題組信息，會話可能已過期或ID無效，請重新開始。" }), { status: 404, headers: baseHeaders });
@@ -957,6 +1242,12 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 if (!questionSet || !questionSet.questions || questionSet.questions.length === 0) {
                     console.error(`Invalid or missing/empty GaoKao question set data in KV for setId ${challengeIdentifier}`, questionSet);
                     return new Response(JSON.stringify({ error: "無效的“挑戰高考”題組信息，請重新開始。" }), { status: 400, headers: baseHeaders });
+                }
+                if (!questionSet.ownerUserId || questionSet.ownerUserId !== userId) {
+                    return new Response(JSON.stringify({ error: "此題組不屬於當前登錄用戶，請重新開始挑戰。" }), { status: 403, headers: baseHeaders });
+                }
+                if (questionSet.usedAt) {
+                    return new Response(JSON.stringify({ error: "此題組已提交過，請重新開始新的挑戰。" }), { status: 409, headers: baseHeaders });
                 }
                 questionsToScore = questionSet.questions; // Already in QuestionInfo format
                 expectedQuestionCount = questionsToScore.length;
@@ -1080,11 +1371,10 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             // --- Scoring ---
             const results: SubmissionResult[] = [];
             let totalScore = 0;
-            // Calculate points per question to reach the TOTAL_SCORE_TARGET
-            const pointsPerQuestion = expectedQuestionCount > 0 ? (TOTAL_SCORE_TARGET / expectedQuestionCount) : 0;
+            const scoreTarget = getScoreTarget(expectedQuestionCount);
+            const pointsPerQuestion = expectedQuestionCount > 0 ? (scoreTarget / expectedQuestionCount) : 0;
 
             function removePunctuation(text: string): string {
-                if (typeof text !== 'string') return text;
                 // Keep basic Chinese punctuation often used in answers if needed, otherwise remove all
                 // return text.replace(/[^\p{L}\p{N}]/gu, ''); // Keeps letters and numbers only
                 return text.replace(/[\p{P}\p{S}\p{Z}]+/gu, ''); // Removes punctuation, symbols, separators
@@ -1096,7 +1386,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 const questionId = questionIds[i]; // Use the previously mapped ID
                 let isCorrect = false;
                 let score = 0;
-                let success = !recognized.startsWith("[") || recognized === "[無法識別]";
+                let success = !recognized.startsWith("[");
                 let itemError: string | undefined = undefined;
 
                 if (recognized === "[OCR調用失敗]" || recognized === "[答案提取失敗]" || recognized === "[答案缺失]") {
@@ -1138,7 +1428,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             }
             // Round final score to avoid floating point issues
             totalScore = Math.round(totalScore * 10) / 10;
-            console.log(`Scoring complete for ${challengeType} challenge ${challengeIdentifier}. Total score: ${totalScore} / ${TOTAL_SCORE_TARGET}`);
+            console.log(`Scoring complete for ${challengeType} challenge ${challengeIdentifier}. Total score: ${totalScore} / ${scoreTarget}`);
 
             // --- Generate Feedback using AI ---
             let feedback = "";
@@ -1148,7 +1438,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
             // --- Generate Feedback Text ---
             // Same prompt logic, adapted score context
-            const scoreTarget = TOTAL_SCORE_TARGET;
             if (totalScore === scoreTarget) {
                 feedback = `太棒了！滿分 ${scoreTarget} 分！簡直是默寫的神！繼續保持！`;
                 feedbackErrorMsg = null;
@@ -1255,15 +1544,25 @@ ${ocrError ? `\n圖片識別提示: ${ocrError}` : ''}
                 finalMessage = `評分完成，但 AI 反饋生成過程遇到問題: ${feedbackIssueDetail}`;
             }
 
-            const pointsAwarded = calculatePointsAwarded(totalScore);
+            const pointsAwarded = calculatePointsAwarded(totalScore, scoreTarget, expectedQuestionCount);
+            if (challengeType === 'gaokao' && gaokaoSetStorageKey) {
+                try {
+                    await env.SESSION_KV.delete(gaokaoSetStorageKey);
+                } catch (kvDeleteError: any) {
+                    console.error(`Failed to delete used GaoKao set ${gaokaoSetStorageKey}:`, kvDeleteError);
+                    throw new Error('題組狀態更新失敗，請稍後再試。');
+                }
+            }
             const now = Date.now();
             const dailyKey = getDailyKey(now);
             const weeklyKey = getWeeklyKey(now);
-            const [totalUpdate, weeklyUpdate, dailyUpdate] = await Promise.all([
+            const [totalStats, weeklyStats, dailyStats] = await Promise.all([
                 updateScopedStats(env.SESSION_KV, 'total', 'all', userId, username, pointsAwarded, totalScore),
                 updateScopedStats(env.SESSION_KV, 'weekly', weeklyKey, userId, username, pointsAwarded, totalScore),
                 updateScopedStats(env.SESSION_KV, 'daily', dailyKey, userId, username, pointsAwarded, totalScore),
             ]);
+            const leaderboardSnapshot = await getLeaderboardBundle(env.SESSION_KV, 10);
+            await env.SESSION_KV.put(submitCooldownKey, Date.now().toString(), { expirationTtl: SUBMIT_COOLDOWN_SECONDS });
 
             const responseData: any = { // Use 'any' temporarily for flexibility
                 message: finalMessage,
@@ -1280,16 +1579,11 @@ ${ocrError ? `\n圖片識別提示: ${ocrError}` : ''}
                     username,
                 },
                 userStats: {
-                    total: toLeaderboardEntry(totalUpdate.stats),
-                    weekly: toLeaderboardEntry(weeklyUpdate.stats),
-                    daily: toLeaderboardEntry(dailyUpdate.stats),
+                    total: toLeaderboardEntry(totalStats),
+                    weekly: toLeaderboardEntry(weeklyStats),
+                    daily: toLeaderboardEntry(dailyStats),
                 },
-                leaderboardSnapshot: {
-                    total: totalUpdate.topList.slice(0, 10),
-                    weekly: weeklyUpdate.topList.slice(0, 10),
-                    daily: dailyUpdate.topList.slice(0, 10),
-                    period: { dailyKey, weeklyKey },
-                }
+                leaderboardSnapshot
             };
 
             return new Response(JSON.stringify(responseData), { headers: baseHeaders });
