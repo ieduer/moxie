@@ -1066,21 +1066,23 @@
         }
 
         async function parseApiError(response) {
-            const contentType = response.headers.get('content-type') || '';
-            if (contentType.includes('application/json')) {
-                try {
-                    const payload = await response.json();
-                    if (payload && typeof payload.error === 'string') {
-                        return payload.error;
-                    }
-                } catch (error) {
-                    console.warn('Failed to parse API error JSON:', error);
-                }
-            }
-
             try {
-                const text = await response.text();
-                const plainText = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+                const contentType = response.headers.get('content-type') || '';
+                const rawText = await response.text();
+                if (!rawText) return '';
+
+                if (contentType.includes('application/json') || rawText.trim().startsWith('{')) {
+                    try {
+                        const payload = JSON.parse(rawText);
+                        if (payload && typeof payload.error === 'string') {
+                            return payload.error;
+                        }
+                    } catch (jsonError) {
+                        console.warn('Failed to parse API error JSON text:', jsonError);
+                    }
+                }
+
+                const plainText = rawText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
                 return plainText ? plainText.slice(0, 180) : '';
             } catch (error) {
                 console.warn('Failed to read API error text:', error);
@@ -1619,7 +1621,13 @@
 
                 currentChallengeType = 'gaokao';
                 currentChallengeIdentifier = setData.setId; // Store the setId
-                statusDiv.textContent = `高考挑戰題組已就緒 (ID: ${currentChallengeIdentifier.substring(0, 6)}...)！請提筆作答...`;
+                const expiresAt = Number(setData.expiresAt || 0);
+                if (Number.isFinite(expiresAt) && expiresAt > 0) {
+                    const expireTimeLabel = new Date(expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    statusDiv.textContent = `高考挑戰題組已就緒 (ID: ${currentChallengeIdentifier.substring(0, 6)}...)，請於 ${expireTimeLabel} 前提交。`;
+                } else {
+                    statusDiv.textContent = `高考挑戰題組已就緒 (ID: ${currentChallengeIdentifier.substring(0, 6)}...)！請提筆作答...`;
+                }
 
                 const gaokaoScoreTarget = setData.questions.length * 2;
                 displayQuestions(setData.questions, `挑戰高考 (${setData.questions.length}題, 共 ${gaokaoScoreTarget} 分)`);
@@ -1994,6 +2002,13 @@
                 if (error?.status === 401) {
                     clearCurrentUser();
                     statusDiv.textContent = '狀態：登錄已過期，請重新登錄。';
+                } else if (error?.status === 404 || error?.status === 409) {
+                    currentChallengeType = null;
+                    currentChallengeIdentifier = null;
+                    currentChapterTitle = '';
+                    uploadSection.style.display = 'none';
+                    resetUploadWidgets();
+                    statusDiv.textContent = '狀態：當前挑戰已失效，請重新選擇挑戰模式。';
                 }
                 displayError(`提交或處理失敗: ${error.message || '未知客戶端錯誤'}`, resultDiv); // Display error in result area
             } finally {
@@ -2003,6 +2018,9 @@
                 }
                 isSubmitting = false;
                 setLoadingState(submitBtn, false, '提交墨寶');
+                if (!currentChallengeType || !compressedImageBlob) {
+                    submitBtn.disabled = true;
+                }
                 // Re-enable main challenge buttons after submission attempt
                 gaokaoChallengeBtn.disabled = false;
                 selectChapterBtn.disabled = false;

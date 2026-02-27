@@ -5,7 +5,7 @@ import type { PagesFunction, R2Bucket, KVNamespace } from '@cloudflare/workers-t
 import poemsDataRaw from './_internal/poems.json';
 
 // --- Constants ---
-const KV_EXPIRATION_TTL_SECONDS = 3600; // 1 hour
+const GAOKAO_SET_TTL_SECONDS = 60 * 60 * 6; // 6 hours
 // ** Using specified models **
 const GEMINI_VISION_MODEL = "gemini-flash-latest";
 const GEMINI_TEXT_MODEL = "gemini-flash-latest";
@@ -26,9 +26,12 @@ const SESSION_TTL_SECONDS = 60 * 60 * 24 * 14; // 14 days
 const SUBMIT_COOLDOWN_SECONDS = 45;
 const SUBMIT_LOCK_TTL_SECONDS = 25;
 const GAOKAO_SET_LOCK_TTL_SECONDS = 300;
+const CHAPTER_DAILY_COUNTER_TTL_SECONDS = 60 * 60 * 24 * 2;
+const CHAPTER_WEEKLY_COUNTER_TTL_SECONDS = 60 * 60 * 24 * 8;
 const MAX_UPLOAD_IMAGE_BYTES = 5 * 1024 * 1024;
 const CHAPTER_DAILY_SUBMIT_LIMIT = 2;
 const CHAPTER_WEEKLY_SUBMIT_LIMIT = 8;
+const IMAGE_FINGERPRINT_PENDING_TTL_SECONDS = 60 * 10;
 const IMAGE_FINGERPRINT_TTL_SECONDS = 60 * 60 * 24;
 const USERNAME_MIN_LENGTH = 2;
 const USERNAME_MAX_LENGTH = 20;
@@ -36,6 +39,8 @@ const USERNAME_ALLOWED_REGEX = /^[\p{L}\p{N}_-]+$/u;
 const PASSWORD_MIN_LENGTH = 6;
 const PASSWORD_MAX_LENGTH = 64;
 const PASSWORD_HASH_ITERATIONS = 120000;
+const CHANGE_PASSWORD_WINDOW_SECONDS = 60 * 60;
+const CHANGE_PASSWORD_MAX_ATTEMPTS = 5;
 
 const ALLOWED_ORIGIN_PATTERNS = [
     /^https:\/\/([a-z0-9-]+\.)*bdfz\.net$/i,
@@ -367,6 +372,10 @@ function getSessionKey(token: string): string {
     return `moxie:session:${token}`;
 }
 
+function getChangePasswordRateKey(userId: string): string {
+    return `moxie:auth:change-password-rate:${userId}`;
+}
+
 function getStatsKey(scope: LeaderboardScope, period: string, userId: string): string {
     if (scope === 'total') {
         return `moxie:leaderboard:total:user:${userId}`;
@@ -405,7 +414,7 @@ function getImageFingerprintKey(userId: string, fingerprint: string): string {
     return `moxie:image-fingerprint:user:${userId}:${fingerprint}`;
 }
 
-function getLeaderboardScopeCacheKey(scope: LeaderboardScope, period: string, limit: number, version: number): string {
+function getLeaderboardScopeCacheKey(scope: LeaderboardScope, period: string, limit: number, version: string): string {
     return `moxie:leaderboard:cache:${scope}:${period}:limit:${limit}:version:${version}`;
 }
 
@@ -421,6 +430,17 @@ async function putJsonKV(kv: KVNamespace, key: string, value: unknown, expiratio
 function getScoreTarget(questionCount: number): number {
     const safeQuestionCount = Number.isFinite(questionCount) ? questionCount : 1;
     return Math.max(1, safeQuestionCount) * SCORE_PER_QUESTION;
+}
+
+function parseStoredCounter(rawValue: string | null, fallbackOnInvalid = 0): number {
+    if (rawValue === null) {
+        return 0;
+    }
+    const parsed = parseInt(rawValue, 10);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+        return fallbackOnInvalid;
+    }
+    return parsed;
 }
 
 function calculatePointsAwarded(totalScore: number, scoreTarget: number, questionCount: number): number {
@@ -714,18 +734,18 @@ async function getUserStatsSummary(kv: KVNamespace, userId: string, username: st
     };
 }
 
-async function getLeaderboardVersion(kv: KVNamespace): Promise<number> {
+async function getLeaderboardVersion(kv: KVNamespace): Promise<string> {
     const raw = await kv.get(LEADERBOARD_VERSION_KEY);
-    const parsed = raw ? parseInt(raw, 10) : 0;
-    if (!Number.isFinite(parsed) || parsed < 0) {
-        return 0;
+    if (!raw) {
+        return '0';
     }
-    return parsed;
+    const normalized = raw.trim();
+    return normalized || '0';
 }
 
-async function bumpLeaderboardVersion(kv: KVNamespace): Promise<number> {
-    const current = await getLeaderboardVersion(kv);
-    const next = current + 1;
+async function bumpLeaderboardVersion(kv: KVNamespace): Promise<string> {
+    // Use unique version token to avoid read-then-write race conditions.
+    const next = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
     await kv.put(LEADERBOARD_VERSION_KEY, String(next));
     return next;
 }
@@ -735,7 +755,7 @@ async function readLeaderboardScope(
     scope: LeaderboardScope,
     period: string,
     limit: number,
-    version: number
+    version: string
 ): Promise<LeaderboardEntry[]> {
     const safeLimit = Math.max(1, Math.min(limit, LEADERBOARD_TOP_LIMIT));
     const cacheKey = getLeaderboardScopeCacheKey(scope, period, safeLimit, version);
@@ -800,7 +820,7 @@ async function callGeminiAPI(apiKey: string, model: string, contents: GeminiCont
     let lastError: any = null;
 
     for (let attempt = 0; attempt <= API_RETRY_COUNT; attempt++) {
-        console.log(`Calling Gemini API: ${url} (Model: ${model}, Attempt: ${attempt + 1}/${API_RETRY_COUNT + 1})`);
+        console.log(`Calling Gemini API (Model: ${model}, Attempt: ${attempt + 1}/${API_RETRY_COUNT + 1})`);
         let response: Response | null = null; // Declare response outside try
 
         try {
@@ -1150,8 +1170,24 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 return new Response(JSON.stringify({ error: '賬號信息缺失，請重新登錄。' }), { status: 401, headers: baseHeaders });
             }
 
+            const changePasswordRateKey = getChangePasswordRateKey(session.userId);
+            const rawRateCount = await env.SESSION_KV.get(changePasswordRateKey);
+            const rateCount = rawRateCount ? parseInt(rawRateCount, 10) : 0;
+            const failedAttempts = Number.isFinite(rateCount) && rateCount > 0 ? rateCount : 0;
+            if (failedAttempts >= CHANGE_PASSWORD_MAX_ATTEMPTS) {
+                return new Response(
+                    JSON.stringify({ error: `密碼驗證失敗次數過多，請於 ${Math.round(CHANGE_PASSWORD_WINDOW_SECONDS / 60)} 分鐘後再試。` }),
+                    { status: 429, headers: baseHeaders }
+                );
+            }
+
             const oldHash = await hashPassword(oldPassword, authRecord.passwordSalt);
             if (!timingSafeEqual(oldHash, authRecord.passwordHash)) {
+                await env.SESSION_KV.put(
+                    changePasswordRateKey,
+                    String(failedAttempts + 1),
+                    { expirationTtl: CHANGE_PASSWORD_WINDOW_SECONDS }
+                );
                 return new Response(JSON.stringify({ error: '舊密碼不正確。' }), { status: 401, headers: baseHeaders });
             }
 
@@ -1177,6 +1213,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 activeSessionToken: newToken,
             };
             await putJsonKV(env.SESSION_KV, authKey, updatedAuth);
+            await env.SESSION_KV.delete(changePasswordRateKey).catch(() => undefined);
 
             return new Response(JSON.stringify({
                 success: true,
@@ -1196,7 +1233,15 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             const bundle = await getLeaderboardBundle(env.SESSION_KV, isNaN(limit) ? 20 : limit);
 
             let me: { userId: string; username: string; stats: Awaited<ReturnType<typeof getUserStatsSummary>>; } | null = null;
-            const maybeSession = await getSessionFromRequest(request, env.SESSION_KV, false);
+            let maybeSession: SessionRecord | null = null;
+            try {
+                maybeSession = await getSessionFromRequest(request, env.SESSION_KV, false);
+            } catch (sessionError: any) {
+                if (sessionError?.status !== 401) {
+                    throw sessionError;
+                }
+                maybeSession = null;
+            }
             if (maybeSession) {
                 const stats = await getUserStatsSummary(env.SESSION_KV, maybeSession.userId, maybeSession.username);
                 me = { userId: maybeSession.userId, username: maybeSession.username, stats };
@@ -1251,7 +1296,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 ownerUserId: session.userId,
             };
             try {
-                await env.SESSION_KV.put(getGaokaoSetKey(setId), JSON.stringify(newSet), { expirationTtl: KV_EXPIRATION_TTL_SECONDS });
+                await env.SESSION_KV.put(getGaokaoSetKey(setId), JSON.stringify(newSet), { expirationTtl: GAOKAO_SET_TTL_SECONDS });
                 console.log(`Stored new GaoKao question set in KV with setId: ${setId} (${generatedQuestions.length} questions)`);
             } catch (kvError: any) {
                 console.error(`KV put error for GaoKao setId ${setId}:`, kvError);
@@ -1260,7 +1305,12 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
             // Prepare response for the frontend (without answers)
             const questionsForFrontend = newSet.questions.map(({ answer, ...rest }: QuestionInfo) => rest);
-            return new Response(JSON.stringify({ setId: newSet.setId, questions: questionsForFrontend }), { headers: baseHeaders });
+            return new Response(JSON.stringify({
+                setId: newSet.setId,
+                questions: questionsForFrontend,
+                expiresAt: newSet.createdAt + (GAOKAO_SET_TTL_SECONDS * 1000),
+                expiresInSeconds: GAOKAO_SET_TTL_SECONDS,
+            }), { headers: baseHeaders });
 
         } // End /api/start_gaokao_set
 
@@ -1347,6 +1397,10 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             let chapterDailyCount = 0;
             let chapterWeeklyCount = 0;
             let imageFingerprintKey: string | null = null;
+            let imageFingerprintReserved = false;
+            let imageFingerprintFinalized = false;
+            let r2Key: string | null = null;
+            let scoreCommitted = false;
 
             try {
                 // --- Request Parsing and Validation ---
@@ -1431,8 +1485,10 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 const chapterWeeklyKey = getWeeklyKey(chapterNow);
                 chapterDailyAttemptKey = getChapterAttemptKey('daily', chapterDailyKey, userId, order);
                 chapterWeeklyAttemptKey = getChapterAttemptKey('weekly', chapterWeeklyKey, userId, order);
-                chapterDailyCount = parseInt((await env.SESSION_KV.get(chapterDailyAttemptKey)) || '0', 10) || 0;
-                chapterWeeklyCount = parseInt((await env.SESSION_KV.get(chapterWeeklyAttemptKey)) || '0', 10) || 0;
+                const rawDailyCount = await env.SESSION_KV.get(chapterDailyAttemptKey);
+                const rawWeeklyCount = await env.SESSION_KV.get(chapterWeeklyAttemptKey);
+                chapterDailyCount = parseStoredCounter(rawDailyCount, CHAPTER_DAILY_SUBMIT_LIMIT);
+                chapterWeeklyCount = parseStoredCounter(rawWeeklyCount, CHAPTER_WEEKLY_SUBMIT_LIMIT);
                 if (chapterDailyCount >= CHAPTER_DAILY_SUBMIT_LIMIT) {
                     return new Response(JSON.stringify({ error: `本篇今日已達 ${CHAPTER_DAILY_SUBMIT_LIMIT} 次提交上限，請明日再試。` }), { status: 429, headers: baseHeaders });
                 }
@@ -1475,7 +1531,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             if (hasUsedSameImage) {
                 return new Response(JSON.stringify({ error: '檢測到重複提交同一張圖片，請更換作答後再提交。' }), { status: 409, headers: baseHeaders });
             }
-            const r2Key = generateUniqueKey(`${challengeType}-${challengeIdentifier}-answer`, `.${imageFile.type.split('/')[1] || 'png'}`);
+            await env.SESSION_KV.put(
+                imageFingerprintKey,
+                `pending:${Date.now()}`,
+                { expirationTtl: IMAGE_FINGERPRINT_PENDING_TTL_SECONDS }
+            );
+            imageFingerprintReserved = true;
+            r2Key = generateUniqueKey(`${challengeType}-${challengeIdentifier}-answer`, `.${imageFile.type.split('/')[1] || 'png'}`);
             try {
                 await env.IMAGES_BUCKET.put(r2Key, imageBuffer, { httpMetadata: { contentType: imageFile.type } });
                 console.log(`Stored image in R2 with key: ${r2Key} for ${challengeType} challenge ${challengeIdentifier}`);
@@ -1732,6 +1794,11 @@ ${ocrError ? `\n圖片識別提示: ${ocrError}` : ''}
             }
 
             const pointsAwarded = calculatePointsAwarded(totalScore, scoreTarget, expectedQuestionCount);
+            const now = Date.now();
+            if (imageFingerprintKey) {
+                await env.SESSION_KV.put(imageFingerprintKey, String(now), { expirationTtl: IMAGE_FINGERPRINT_TTL_SECONDS });
+                imageFingerprintFinalized = true;
+            }
             if (challengeType === 'gaokao' && gaokaoSetStorageKey) {
                 try {
                     await env.SESSION_KV.delete(gaokaoSetStorageKey);
@@ -1740,7 +1807,6 @@ ${ocrError ? `\n圖片識別提示: ${ocrError}` : ''}
                     throw new Error('題組狀態更新失敗，請稍後再試。');
                 }
             }
-            const now = Date.now();
             const dailyKey = getDailyKey(now);
             const weeklyKey = getWeeklyKey(now);
             const [totalStats, weeklyStats, dailyStats] = await Promise.all([
@@ -1748,14 +1814,12 @@ ${ocrError ? `\n圖片識別提示: ${ocrError}` : ''}
                 updateScopedStats(env.SESSION_KV, 'weekly', weeklyKey, userId, username, pointsAwarded, totalScore),
                 updateScopedStats(env.SESSION_KV, 'daily', dailyKey, userId, username, pointsAwarded, totalScore),
             ]);
+            scoreCommitted = true;
             if (challengeType === 'chapter' && chapterDailyAttemptKey && chapterWeeklyAttemptKey) {
                 await Promise.all([
-                    env.SESSION_KV.put(chapterDailyAttemptKey, String(chapterDailyCount + 1), { expirationTtl: 60 * 60 * 24 * 2 }),
-                    env.SESSION_KV.put(chapterWeeklyAttemptKey, String(chapterWeeklyCount + 1), { expirationTtl: 60 * 60 * 24 * 14 }),
+                    env.SESSION_KV.put(chapterDailyAttemptKey, String(chapterDailyCount + 1), { expirationTtl: CHAPTER_DAILY_COUNTER_TTL_SECONDS }),
+                    env.SESSION_KV.put(chapterWeeklyAttemptKey, String(chapterWeeklyCount + 1), { expirationTtl: CHAPTER_WEEKLY_COUNTER_TTL_SECONDS }),
                 ]);
-            }
-            if (imageFingerprintKey) {
-                await env.SESSION_KV.put(imageFingerprintKey, String(now), { expirationTtl: IMAGE_FINGERPRINT_TTL_SECONDS });
             }
             await bumpLeaderboardVersion(env.SESSION_KV);
             const leaderboardSnapshot = await getLeaderboardBundle(env.SESSION_KV, 10);
@@ -1785,6 +1849,18 @@ ${ocrError ? `\n圖片識別提示: ${ocrError}` : ''}
 
             return new Response(JSON.stringify(responseData), { headers: baseHeaders });
             } finally {
+                if (!scoreCommitted) {
+                    if (imageFingerprintKey && imageFingerprintReserved && !imageFingerprintFinalized) {
+                        await env.SESSION_KV.delete(imageFingerprintKey).catch((cleanupError: any) => {
+                            console.warn(`Failed to clear pending image fingerprint ${imageFingerprintKey}:`, cleanupError?.message || cleanupError);
+                        });
+                    }
+                    if (r2Key) {
+                        await env.IMAGES_BUCKET.delete(r2Key).catch((cleanupError: any) => {
+                            console.warn(`Failed to remove R2 object after failed submit ${r2Key}:`, cleanupError?.message || cleanupError);
+                        });
+                    }
+                }
                 await env.SESSION_KV.delete(submitLockKey).catch((cleanupError: any) => {
                     console.warn(`Failed to clear submit lock ${submitLockKey}:`, cleanupError?.message || cleanupError);
                 });
