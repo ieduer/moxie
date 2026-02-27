@@ -1604,11 +1604,19 @@
             } catch (error) {
                 if (error?.status === 401) {
                     clearCurrentUser();
-                    statusDiv.textContent = '狀態：登錄已過期，請重新登錄。';
+                    displayError('登錄已過期，請重新登錄。', statusDiv);
+                } else {
+                    displayError(`修改密碼失敗：${error.message || '未知錯誤'}`, statusDiv);
                 }
-                displayError(`修改密碼失敗：${error.message || '未知錯誤'}`, statusDiv);
             } finally {
                 setLoadingState(changePasswordBtn, false, '修改密碼');
+            }
+        });
+
+        newPasswordInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                changePasswordBtn.click();
             }
         });
 
@@ -1633,7 +1641,7 @@
             resetUI(); // Full reset
             isLoading = true;
             setLoadingState(gaokaoChallengeBtn, true, '正在出題');
-            setLoadingState(selectChapterBtn, true); // Disable other button
+            setLoadingState(selectChapterBtn, true, '選篇挑戰'); // Disable other button
             statusDiv.textContent = '正在從雲端獲取高考挑戰題組...';
             statusDiv.style.display = 'block';
 
@@ -1663,7 +1671,6 @@
             } catch (error) {
                 console.error('Error fetching GaoKao questions:', error);
                 displayError(`獲取“挑戰高考”題目時遇到問題: ${error.message || '未知錯誤'}`);
-                resetUI(); // Reset fully on error
             } finally {
                 isLoading = false;
                 // Reset loading states, keep buttons enabled
@@ -1682,7 +1689,7 @@
             resetUI(); // Full reset before showing chapters
             isLoading = true;
             setLoadingState(selectChapterBtn, true, '加載篇目');
-            setLoadingState(gaokaoChallengeBtn, true); // Disable other button
+            setLoadingState(gaokaoChallengeBtn, true, '挑戰高考'); // Disable other button
             statusDiv.textContent = '正在加載篇目列表...';
             statusDiv.style.display = 'block';
             // Clear main result area, ensure chapter selection is visible
@@ -1716,7 +1723,8 @@
                 if (error?.status === 401) {
                     clearCurrentUser();
                     displayError('登錄已過期，請重新登錄。', statusDiv);
-                    chapterSelectionDiv.style.display = 'block';
+                    chapterSelectionDiv.style.display = 'none';
+                    chapterSelectionDiv.innerHTML = '';
                     return;
                 }
                 displayError(`獲取篇目列表時遇到問題: ${error.message || '未知錯誤'}`, chapterSelectionDiv); // Display error in chapter section
@@ -1734,6 +1742,7 @@
 
         // (Req 7 - part 2) Handler for clicking a chapter button
         async function handleChapterSelection(event) {
+            if (!requireLogin()) return;
             if (isLoading) return;
             const button = event.currentTarget;
             const chapterOrder = button.dataset.order;
@@ -1788,7 +1797,8 @@
                 if (error?.status === 401) {
                     clearCurrentUser();
                     displayError('登錄已過期，請重新登錄。', statusDiv);
-                    chapterSelectionDiv.style.display = 'block';
+                    chapterSelectionDiv.style.display = 'none';
+                    chapterSelectionDiv.innerHTML = '';
                     return;
                 }
                 statusDiv.textContent = `狀態：加載篇目 ${chapterOrder} 題目失敗，可重試`;
@@ -2040,7 +2050,7 @@
                 console.error('Submit error:', error);
                 if (error?.status === 401) {
                     clearCurrentUser();
-                    statusDiv.textContent = '狀態：登錄已過期，請重新登錄。';
+                    displayError('登錄已過期，請重新登錄。', statusDiv);
                 } else if (error?.status === 404 || error?.status === 409) {
                     currentChallengeType = null;
                     currentChallengeIdentifier = null;
@@ -2048,6 +2058,8 @@
                     uploadSection.style.display = 'none';
                     resetUploadWidgets();
                     statusDiv.textContent = '狀態：當前挑戰已失效，請重新選擇挑戰模式。';
+                } else {
+                    statusDiv.textContent = '狀態：本次提交未完成。可更換圖片後重試，或重新選擇挑戰。';
                 }
                 displayError(`提交或處理失敗: ${error.message || '未知客戶端錯誤'}`, resultDiv); // Display error in result area
             } finally {
