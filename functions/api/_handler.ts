@@ -2,7 +2,7 @@ import type { PagesFunction, R2Bucket, KVNamespace } from '@cloudflare/workers-t
 
 // --- NEW DATA LOADING --- (Requirement 1 & 2)
 // Load poem data from poems.json
-import poemsDataRaw from '../../data/poems.json'; // Changed source
+import poemsDataRaw from './_internal/poems.json';
 
 // --- Constants ---
 const KV_EXPIRATION_TTL_SECONDS = 3600; // 1 hour
@@ -19,11 +19,17 @@ const REFERENCE_QUESTION_COUNT_FOR_POINTS = 4;
 const MAX_POINTS_BASE = 80;
 const LEADERBOARD_TOP_LIMIT = 50;
 const LEADERBOARD_SCAN_BATCH_SIZE = 1000;
+const LEADERBOARD_CACHE_TTL_SECONDS = 45;
+const LEADERBOARD_VERSION_KEY = 'moxie:leaderboard:version';
 const STATS_PERIOD_TTL_SECONDS = 60 * 60 * 24 * 120; // 120 days
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 14; // 14 days
 const SUBMIT_COOLDOWN_SECONDS = 45;
 const SUBMIT_LOCK_TTL_SECONDS = 25;
 const GAOKAO_SET_LOCK_TTL_SECONDS = 300;
+const MAX_UPLOAD_IMAGE_BYTES = 5 * 1024 * 1024;
+const CHAPTER_DAILY_SUBMIT_LIMIT = 2;
+const CHAPTER_WEEKLY_SUBMIT_LIMIT = 8;
+const IMAGE_FINGERPRINT_TTL_SECONDS = 60 * 60 * 24;
 const USERNAME_MIN_LENGTH = 2;
 const USERNAME_MAX_LENGTH = 20;
 const USERNAME_ALLOWED_REGEX = /^[\p{L}\p{N}_-]+$/u;
@@ -143,6 +149,7 @@ interface UserAuthRecord {
     username: string;
     passwordSalt: string;
     passwordHash: string;
+    activeSessionToken?: string;
     createdAt: number;
     updatedAt: number;
 }
@@ -167,6 +174,7 @@ interface UserStats {
 interface TierInfo {
     tierLevel: number;
     tierName: string;
+    modeName: string;
     nextTierName: string | null;
     progressPercent: number;
 }
@@ -389,6 +397,18 @@ function getSubmitCooldownKey(userId: string): string {
     return `moxie:submit:cooldown:${userId}`;
 }
 
+function getChapterAttemptKey(scope: 'daily' | 'weekly', period: string, userId: string, chapterOrder: number): string {
+    return `moxie:chapter-attempt:${scope}:${period}:user:${userId}:chapter:${chapterOrder}`;
+}
+
+function getImageFingerprintKey(userId: string, fingerprint: string): string {
+    return `moxie:image-fingerprint:user:${userId}:${fingerprint}`;
+}
+
+function getLeaderboardScopeCacheKey(scope: LeaderboardScope, period: string, limit: number, version: number): string {
+    return `moxie:leaderboard:cache:${scope}:${period}:limit:${limit}:version:${version}`;
+}
+
 async function getJsonKV<T>(kv: KVNamespace, key: string): Promise<T | null> {
     return kv.get<T>(key, 'json');
 }
@@ -399,7 +419,8 @@ async function putJsonKV(kv: KVNamespace, key: string, value: unknown, expiratio
 }
 
 function getScoreTarget(questionCount: number): number {
-    return Math.max(1, questionCount) * SCORE_PER_QUESTION;
+    const safeQuestionCount = Number.isFinite(questionCount) ? questionCount : 1;
+    return Math.max(1, safeQuestionCount) * SCORE_PER_QUESTION;
 }
 
 function calculatePointsAwarded(totalScore: number, scoreTarget: number, questionCount: number): number {
@@ -415,15 +436,15 @@ function calculatePointsAwarded(totalScore: number, scoreTarget: number, questio
     return basePoints + participationBonus + fullScoreBonus;
 }
 
-const IDV_TIERS: { minPoints: number; tierLevel: number; tierName: string; }[] = [
-    { minPoints: 0, tierLevel: 1, tierName: '工蜂' },
-    { minPoints: 200, tierLevel: 2, tierName: '獵犬' },
-    { minPoints: 600, tierLevel: 3, tierName: '馴鹿' },
-    { minPoints: 1200, tierLevel: 4, tierName: '猛獁' },
-    { minPoints: 2000, tierLevel: 5, tierName: '獅鷲' },
-    { minPoints: 3200, tierLevel: 6, tierName: '獨角獸' },
-    { minPoints: 4800, tierLevel: 7, tierName: '勇士' },
-    { minPoints: 7000, tierLevel: 8, tierName: '泰坦' },
+const IDV_TIERS: { minPoints: number; tierLevel: number; tierName: string; modeName: string; }[] = [
+    { minPoints: 0, tierLevel: 1, tierName: '工蜂', modeName: '常規排位' },
+    { minPoints: 200, tierLevel: 2, tierName: '獵犬', modeName: '常規排位' },
+    { minPoints: 600, tierLevel: 3, tierName: '馴鹿', modeName: '常規排位' },
+    { minPoints: 1200, tierLevel: 4, tierName: '猛獁', modeName: '常規排位' },
+    { minPoints: 2000, tierLevel: 5, tierName: '獅鷲', modeName: '常規排位' },
+    { minPoints: 3200, tierLevel: 6, tierName: '獨角獸', modeName: '常規排位' },
+    { minPoints: 4800, tierLevel: 7, tierName: '殿堂勇士', modeName: '殿堂模式' },
+    { minPoints: 7000, tierLevel: 8, tierName: '巔峰泰坦', modeName: '巔峰模式' },
 ];
 
 function getTierInfo(points: number): TierInfo {
@@ -447,6 +468,7 @@ function getTierInfo(points: number): TierInfo {
     return {
         tierLevel: current.tierLevel,
         tierName: current.tierName,
+        modeName: current.modeName,
         nextTierName: next?.tierName ?? null,
         progressPercent,
     };
@@ -522,6 +544,12 @@ function generateSecureToken(size = 32): string {
     return toBase64Url(bytes);
 }
 
+async function hashSha256Base64Url(raw: ArrayBuffer | string): Promise<string> {
+    const bytes = typeof raw === 'string' ? new TextEncoder().encode(raw) : new Uint8Array(raw);
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return toBase64Url(new Uint8Array(digest));
+}
+
 async function hashPassword(password: string, salt: string): Promise<string> {
     const encoder = new TextEncoder();
     const keyMaterial = await crypto.subtle.importKey(
@@ -545,12 +573,14 @@ async function hashPassword(password: string, salt: string): Promise<string> {
 }
 
 function timingSafeEqual(a: string, b: string): boolean {
-    if (a.length !== b.length) return false;
+    const maxLength = Math.max(a.length, b.length);
     let mismatch = 0;
-    for (let i = 0; i < a.length; i++) {
-        mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    for (let i = 0; i < maxLength; i++) {
+        const charA = i < a.length ? a.charCodeAt(i) : 0;
+        const charB = i < b.length ? b.charCodeAt(i) : 0;
+        mismatch |= charA ^ charB;
     }
-    return mismatch === 0;
+    return mismatch === 0 && a.length === b.length;
 }
 
 async function authenticateAndIssueSession(
@@ -558,16 +588,17 @@ async function authenticateAndIssueSession(
     userId: string,
     username: string,
     password: string
-): Promise<{ session: SessionRecord; isNewUser: boolean; }> {
+): Promise<{ session: SessionRecord; isNewUser: boolean; authRecord: UserAuthRecord; }> {
     const authKey = getAuthKey(userId);
     const now = Date.now();
     const existingAuth = await getJsonKV<UserAuthRecord>(kv, authKey);
     let isNewUser = false;
+    let authRecord: UserAuthRecord;
 
     if (!existingAuth) {
         const passwordSalt = generateSecureToken(16);
         const passwordHash = await hashPassword(password, passwordSalt);
-        const authRecord: UserAuthRecord = {
+        authRecord = {
             userId,
             username,
             passwordSalt,
@@ -575,7 +606,6 @@ async function authenticateAndIssueSession(
             createdAt: now,
             updatedAt: now,
         };
-        await putJsonKV(kv, authKey, authRecord);
         isNewUser = true;
     } else {
         const passwordHash = await hashPassword(password, existingAuth.passwordSalt);
@@ -584,9 +614,15 @@ async function authenticateAndIssueSession(
         }
         if (existingAuth.username !== username) {
             existingAuth.username = username;
-            existingAuth.updatedAt = now;
-            await putJsonKV(kv, authKey, existingAuth);
         }
+        authRecord = {
+            ...existingAuth,
+            updatedAt: now,
+        };
+    }
+
+    if (authRecord.activeSessionToken) {
+        await kv.delete(getSessionKey(authRecord.activeSessionToken)).catch(() => undefined);
     }
 
     await ensureUserProfile(kv, userId, username);
@@ -599,7 +635,10 @@ async function authenticateAndIssueSession(
         expiresAt: now + (SESSION_TTL_SECONDS * 1000),
     };
     await putJsonKV(kv, getSessionKey(token), session, SESSION_TTL_SECONDS);
-    return { session, isNewUser };
+    authRecord.activeSessionToken = token;
+    authRecord.updatedAt = now;
+    await putJsonKV(kv, authKey, authRecord);
+    return { session, isNewUser, authRecord };
 }
 
 function extractBearerToken(request: Request): string | null {
@@ -621,6 +660,11 @@ async function getSessionFromRequest(request: Request, kv: KVNamespace, required
     if (!session || session.expiresAt <= Date.now() || session.userId.length === 0) {
         await kv.delete(getSessionKey(token)).catch(() => undefined);
         throw createHttpError(401, '登錄已過期，請重新登錄。');
+    }
+    const authRecord = await getJsonKV<UserAuthRecord>(kv, getAuthKey(session.userId));
+    if (!authRecord || authRecord.activeSessionToken !== token) {
+        await kv.delete(getSessionKey(token)).catch(() => undefined);
+        throw createHttpError(401, '登錄已失效，請重新登錄。');
     }
     return session;
 }
@@ -670,13 +714,36 @@ async function getUserStatsSummary(kv: KVNamespace, userId: string, username: st
     };
 }
 
+async function getLeaderboardVersion(kv: KVNamespace): Promise<number> {
+    const raw = await kv.get(LEADERBOARD_VERSION_KEY);
+    const parsed = raw ? parseInt(raw, 10) : 0;
+    if (!Number.isFinite(parsed) || parsed < 0) {
+        return 0;
+    }
+    return parsed;
+}
+
+async function bumpLeaderboardVersion(kv: KVNamespace): Promise<number> {
+    const current = await getLeaderboardVersion(kv);
+    const next = current + 1;
+    await kv.put(LEADERBOARD_VERSION_KEY, String(next));
+    return next;
+}
+
 async function readLeaderboardScope(
     kv: KVNamespace,
     scope: LeaderboardScope,
     period: string,
-    limit: number
+    limit: number,
+    version: number
 ): Promise<LeaderboardEntry[]> {
     const safeLimit = Math.max(1, Math.min(limit, LEADERBOARD_TOP_LIMIT));
+    const cacheKey = getLeaderboardScopeCacheKey(scope, period, safeLimit, version);
+    const cached = await getJsonKV<LeaderboardEntry[]>(kv, cacheKey);
+    if (cached) {
+        return cached.slice(0, safeLimit);
+    }
+
     const prefix = getStatsPrefix(scope, period);
     let cursor: string | undefined = undefined;
     const stats: UserStats[] = [];
@@ -695,7 +762,9 @@ async function readLeaderboardScope(
         cursor = listResult.cursor;
     }
 
-    return sortLeaderboard(stats.map(toLeaderboardEntry)).slice(0, safeLimit);
+    const topList = sortLeaderboard(stats.map(toLeaderboardEntry)).slice(0, safeLimit);
+    await putJsonKV(kv, cacheKey, topList, LEADERBOARD_CACHE_TTL_SECONDS);
+    return topList;
 }
 
 async function getLeaderboardBundle(kv: KVNamespace, limit: number): Promise<{
@@ -708,11 +777,12 @@ async function getLeaderboardBundle(kv: KVNamespace, limit: number): Promise<{
     const dailyKey = getDailyKey(now);
     const weeklyKey = getWeeklyKey(now);
     const safeLimit = Math.max(1, Math.min(limit, LEADERBOARD_TOP_LIMIT));
+    const version = await getLeaderboardVersion(kv);
 
     const [total, weekly, daily] = await Promise.all([
-        readLeaderboardScope(kv, 'total', 'all', safeLimit),
-        readLeaderboardScope(kv, 'weekly', weeklyKey, safeLimit),
-        readLeaderboardScope(kv, 'daily', dailyKey, safeLimit),
+        readLeaderboardScope(kv, 'total', 'all', safeLimit, version),
+        readLeaderboardScope(kv, 'weekly', weeklyKey, safeLimit, version),
+        readLeaderboardScope(kv, 'daily', dailyKey, safeLimit, version),
     ]);
 
     return {
@@ -1032,9 +1102,87 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
             const token = extractBearerToken(request);
             if (token) {
+                const session = await getJsonKV<SessionRecord>(env.SESSION_KV, getSessionKey(token));
+                if (session) {
+                    const authRecord = await getJsonKV<UserAuthRecord>(env.SESSION_KV, getAuthKey(session.userId));
+                    if (authRecord?.activeSessionToken === token) {
+                        delete authRecord.activeSessionToken;
+                        authRecord.updatedAt = Date.now();
+                        await putJsonKV(env.SESSION_KV, getAuthKey(session.userId), authRecord);
+                    }
+                }
                 await env.SESSION_KV.delete(getSessionKey(token));
             }
             return new Response(JSON.stringify({ success: true }), { headers: baseHeaders });
+        }
+
+        if (apiPath === 'change_password' && request.method === 'POST') {
+            const missingBindings = getMissingBindings(env, ['SESSION_KV'] as const);
+            if (missingBindings.length > 0) {
+                return createMissingBindingsResponse(missingBindings, baseHeaders);
+            }
+            const session = await getSessionFromRequest(request, env.SESSION_KV, true);
+
+            let requestBody: any = null;
+            try {
+                requestBody = await request.json();
+            } catch {
+                return new Response(JSON.stringify({ error: '請求格式錯誤：需提交 JSON 格式。' }), { status: 400, headers: baseHeaders });
+            }
+
+            const oldPasswordRaw = typeof requestBody?.oldPassword === 'string' ? requestBody.oldPassword : '';
+            const newPasswordRaw = typeof requestBody?.newPassword === 'string' ? requestBody.newPassword : '';
+            let oldPassword = '';
+            let newPassword = '';
+            try {
+                oldPassword = validatePassword(oldPasswordRaw);
+                newPassword = validatePassword(newPasswordRaw);
+            } catch (validationError: any) {
+                return new Response(JSON.stringify({ error: validationError.message || '密碼格式不正確。' }), { status: 400, headers: baseHeaders });
+            }
+            if (oldPassword === newPassword) {
+                return new Response(JSON.stringify({ error: '新密碼不可與舊密碼相同。' }), { status: 400, headers: baseHeaders });
+            }
+
+            const authKey = getAuthKey(session.userId);
+            const authRecord = await getJsonKV<UserAuthRecord>(env.SESSION_KV, authKey);
+            if (!authRecord) {
+                return new Response(JSON.stringify({ error: '賬號信息缺失，請重新登錄。' }), { status: 401, headers: baseHeaders });
+            }
+
+            const oldHash = await hashPassword(oldPassword, authRecord.passwordSalt);
+            if (!timingSafeEqual(oldHash, authRecord.passwordHash)) {
+                return new Response(JSON.stringify({ error: '舊密碼不正確。' }), { status: 401, headers: baseHeaders });
+            }
+
+            const newSalt = generateSecureToken(16);
+            const newHash = await hashPassword(newPassword, newSalt);
+            const now = Date.now();
+            const newToken = generateSecureToken(32);
+            const newSession: SessionRecord = {
+                token: newToken,
+                userId: session.userId,
+                username: session.username,
+                createdAt: now,
+                expiresAt: now + (SESSION_TTL_SECONDS * 1000),
+            };
+            await putJsonKV(env.SESSION_KV, getSessionKey(newToken), newSession, SESSION_TTL_SECONDS);
+            await env.SESSION_KV.delete(getSessionKey(session.token)).catch(() => undefined);
+
+            const updatedAuth: UserAuthRecord = {
+                ...authRecord,
+                passwordSalt: newSalt,
+                passwordHash: newHash,
+                updatedAt: now,
+                activeSessionToken: newToken,
+            };
+            await putJsonKV(env.SESSION_KV, authKey, updatedAuth);
+
+            return new Response(JSON.stringify({
+                success: true,
+                token: newToken,
+                expiresAt: newSession.expiresAt,
+            }), { headers: baseHeaders });
         }
 
         if (apiPath === 'leaderboard' && request.method === 'GET') {
@@ -1118,6 +1266,11 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
         // --- Route to get chapter list for "選篇挑戰" --- (Requirement 6)
         if (apiPath === 'get_chapters' && request.method === 'GET') {
+            const missingBindings = getMissingBindings(env, ['SESSION_KV'] as const);
+            if (missingBindings.length > 0) {
+                return createMissingBindingsResponse(missingBindings, baseHeaders);
+            }
+            await getSessionFromRequest(request, env.SESSION_KV, true);
             console.log("Processing /api/get_chapters request");
             const poemData = getPreparedPoemData();
 
@@ -1126,6 +1279,11 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
         // --- Route to get questions for a specific chapter --- (Requirement 7)
         if (apiPath === 'get_chapter_questions' && request.method === 'GET') {
+            const missingBindings = getMissingBindings(env, ['SESSION_KV'] as const);
+            if (missingBindings.length > 0) {
+                return createMissingBindingsResponse(missingBindings, baseHeaders);
+            }
+            await getSessionFromRequest(request, env.SESSION_KV, true);
             console.log(`Processing /api/get_chapter_questions request for order: ${chapterOrderParam}`);
             if (!chapterOrderParam) {
                 return new Response(JSON.stringify({ error: '請求無效：缺少篇目順序號 (order)。' }), { status: 400, headers: baseHeaders });
@@ -1183,16 +1341,23 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 return new Response(JSON.stringify({ error: '提交過於頻繁，請稍後再試。' }), { status: 429, headers: baseHeaders });
             }
             await env.SESSION_KV.put(submitLockKey, Date.now().toString(), { expirationTtl: SUBMIT_LOCK_TTL_SECONDS });
+            let gaokaoSetLockKey: string | null = null;
+            let chapterDailyAttemptKey: string | null = null;
+            let chapterWeeklyAttemptKey: string | null = null;
+            let chapterDailyCount = 0;
+            let chapterWeeklyCount = 0;
+            let imageFingerprintKey: string | null = null;
 
-            // --- Request Parsing and Validation ---
-            const formData = await request.formData();
-            const setIdValue = formData.get('setId'); // For GaoKao challenge
-            const chapterOrderValue = formData.get('chapterOrder'); // For Chapter challenge
-            const imageValue = formData.get('handwritingImage');
-            let imageFile: File;
+            try {
+                // --- Request Parsing and Validation ---
+                const formData = await request.formData();
+                const setIdValue = formData.get('setId'); // For GaoKao challenge
+                const chapterOrderValue = formData.get('chapterOrder'); // For Chapter challenge
+                const imageValue = formData.get('handwritingImage');
+                let imageFile: File;
 
-            let challengeType: 'gaokao' | 'chapter' | 'unknown' = 'unknown';
-            let challengeIdentifier: string = '';
+                let challengeType: 'gaokao' | 'chapter' | 'unknown' = 'unknown';
+                let challengeIdentifier: string = '';
 
             // Validate challenge identifier (either setId or chapterOrder must be present)
             if (typeof setIdValue === 'string' && setIdValue) {
@@ -1215,6 +1380,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 return new Response(JSON.stringify({ error: `請求無效：${errorField}。` }), { status: 400, headers: baseHeaders });
             }
             imageFile = imageValue as File;
+            if (imageFile.size > MAX_UPLOAD_IMAGE_BYTES) {
+                return new Response(JSON.stringify({ error: `圖片過大，請上傳不超過 ${Math.floor(MAX_UPLOAD_IMAGE_BYTES / 1024 / 1024)}MB 的圖片。` }), { status: 413, headers: baseHeaders });
+            }
             console.log(`Validation passed for ${challengeType} challenge ${challengeIdentifier}. Image: ${imageFile.name}, Size: ${imageFile.size}, Type: ${imageFile.type}`);
 
 
@@ -1226,12 +1394,12 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             if (challengeType === 'gaokao') {
                 let questionSet: QuestionSet | null = null;
                 gaokaoSetStorageKey = getGaokaoSetKey(challengeIdentifier);
-                const setLockKey = getGaokaoSetLockKey(challengeIdentifier);
-                const setLock = await env.SESSION_KV.get(setLockKey);
+                gaokaoSetLockKey = getGaokaoSetLockKey(challengeIdentifier);
+                const setLock = await env.SESSION_KV.get(gaokaoSetLockKey);
                 if (setLock) {
                     return new Response(JSON.stringify({ error: "此題組正在提交中，請勿重複提交。" }), { status: 409, headers: baseHeaders });
                 }
-                await env.SESSION_KV.put(setLockKey, Date.now().toString(), { expirationTtl: GAOKAO_SET_LOCK_TTL_SECONDS });
+                await env.SESSION_KV.put(gaokaoSetLockKey, Date.now().toString(), { expirationTtl: GAOKAO_SET_LOCK_TTL_SECONDS });
 
                 try {
                     questionSet = await env.SESSION_KV.get<QuestionSet>(gaokaoSetStorageKey, 'json');
@@ -1257,6 +1425,19 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                 const order = parseInt(challengeIdentifier, 10);
                 if (isNaN(order)) {
                     return new Response(JSON.stringify({ error: '請求無效：篇目順序號 (chapterOrder) 必須是數字。' }), { status: 400, headers: baseHeaders });
+                }
+                const chapterNow = Date.now();
+                const chapterDailyKey = getDailyKey(chapterNow);
+                const chapterWeeklyKey = getWeeklyKey(chapterNow);
+                chapterDailyAttemptKey = getChapterAttemptKey('daily', chapterDailyKey, userId, order);
+                chapterWeeklyAttemptKey = getChapterAttemptKey('weekly', chapterWeeklyKey, userId, order);
+                chapterDailyCount = parseInt((await env.SESSION_KV.get(chapterDailyAttemptKey)) || '0', 10) || 0;
+                chapterWeeklyCount = parseInt((await env.SESSION_KV.get(chapterWeeklyAttemptKey)) || '0', 10) || 0;
+                if (chapterDailyCount >= CHAPTER_DAILY_SUBMIT_LIMIT) {
+                    return new Response(JSON.stringify({ error: `本篇今日已達 ${CHAPTER_DAILY_SUBMIT_LIMIT} 次提交上限，請明日再試。` }), { status: 429, headers: baseHeaders });
+                }
+                if (chapterWeeklyCount >= CHAPTER_WEEKLY_SUBMIT_LIMIT) {
+                    return new Response(JSON.stringify({ error: `本篇本週已達 ${CHAPTER_WEEKLY_SUBMIT_LIMIT} 次提交上限，請下週再試。` }), { status: 429, headers: baseHeaders });
                 }
                 const poemData = getPreparedPoemData();
                 const chapterEntry = poemData.chapterMap.get(order);
@@ -1288,6 +1469,12 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
             // --- Store Image to R2 (same as before) ---
             const imageBuffer = await imageFile.arrayBuffer();
+            const imageFingerprint = await hashSha256Base64Url(imageBuffer);
+            imageFingerprintKey = getImageFingerprintKey(userId, imageFingerprint);
+            const hasUsedSameImage = await env.SESSION_KV.get(imageFingerprintKey);
+            if (hasUsedSameImage) {
+                return new Response(JSON.stringify({ error: '檢測到重複提交同一張圖片，請更換作答後再提交。' }), { status: 409, headers: baseHeaders });
+            }
             const r2Key = generateUniqueKey(`${challengeType}-${challengeIdentifier}-answer`, `.${imageFile.type.split('/')[1] || 'png'}`);
             try {
                 await env.IMAGES_BUCKET.put(r2Key, imageBuffer, { httpMetadata: { contentType: imageFile.type } });
@@ -1561,6 +1748,16 @@ ${ocrError ? `\n圖片識別提示: ${ocrError}` : ''}
                 updateScopedStats(env.SESSION_KV, 'weekly', weeklyKey, userId, username, pointsAwarded, totalScore),
                 updateScopedStats(env.SESSION_KV, 'daily', dailyKey, userId, username, pointsAwarded, totalScore),
             ]);
+            if (challengeType === 'chapter' && chapterDailyAttemptKey && chapterWeeklyAttemptKey) {
+                await Promise.all([
+                    env.SESSION_KV.put(chapterDailyAttemptKey, String(chapterDailyCount + 1), { expirationTtl: 60 * 60 * 24 * 2 }),
+                    env.SESSION_KV.put(chapterWeeklyAttemptKey, String(chapterWeeklyCount + 1), { expirationTtl: 60 * 60 * 24 * 14 }),
+                ]);
+            }
+            if (imageFingerprintKey) {
+                await env.SESSION_KV.put(imageFingerprintKey, String(now), { expirationTtl: IMAGE_FINGERPRINT_TTL_SECONDS });
+            }
+            await bumpLeaderboardVersion(env.SESSION_KV);
             const leaderboardSnapshot = await getLeaderboardBundle(env.SESSION_KV, 10);
             await env.SESSION_KV.put(submitCooldownKey, Date.now().toString(), { expirationTtl: SUBMIT_COOLDOWN_SECONDS });
 
@@ -1587,6 +1784,16 @@ ${ocrError ? `\n圖片識別提示: ${ocrError}` : ''}
             };
 
             return new Response(JSON.stringify(responseData), { headers: baseHeaders });
+            } finally {
+                await env.SESSION_KV.delete(submitLockKey).catch((cleanupError: any) => {
+                    console.warn(`Failed to clear submit lock ${submitLockKey}:`, cleanupError?.message || cleanupError);
+                });
+                if (gaokaoSetLockKey) {
+                    await env.SESSION_KV.delete(gaokaoSetLockKey).catch((cleanupError: any) => {
+                        console.warn(`Failed to clear GaoKao set lock ${gaokaoSetLockKey}:`, cleanupError?.message || cleanupError);
+                    });
+                }
+            }
         } // End /api/submit
 
         // --- Fallback for unmatched API routes ---

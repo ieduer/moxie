@@ -317,6 +317,19 @@
             margin: 0;
         }
 
+        .password-change-panel {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px dashed var(--ghibli-border-color);
+        }
+
+        .password-change-form {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
         button {
             padding: 11px 24px;
             cursor: pointer;
@@ -917,11 +930,18 @@
             <div class="account-panel">
                 <div class="account-form">
                     <input id="username-input" type="text" maxlength="20" placeholder="輸入用戶名（中文/字母/數字）">
-                    <input id="password-input" type="password" maxlength="64" placeholder="輸入密碼（首次將自動註冊）">
+                    <input id="password-input" type="password" maxlength="64" placeholder="輸入密碼（至少 6 位，首次將自動註冊）">
                     <button id="login-btn" class="secondary-btn">登錄</button>
-                    <button id="logout-btn" class="secondary-btn">登出</button>
+                    <button id="logout-btn" class="secondary-btn" style="display: none;">登出</button>
                 </div>
                 <p id="account-status">尚未登錄。請先輸入用戶名與密碼。</p>
+                <div id="password-change-panel" class="password-change-panel" style="display: none;">
+                    <div class="password-change-form">
+                        <input id="old-password-input" type="password" maxlength="64" placeholder="當前密碼">
+                        <input id="new-password-input" type="password" maxlength="64" placeholder="新密碼（至少 6 位）">
+                        <button id="change-password-btn" class="secondary-btn">修改密碼</button>
+                    </div>
+                </div>
             </div>
             <div class="experience-tips">
                 <p><strong>操作流程：</strong>先選模式 → 按順序分行作答 → 拍清晰照片 → 等待評閱</p>
@@ -998,6 +1018,10 @@
         const passwordInput = document.getElementById('password-input');
         const loginBtn = document.getElementById('login-btn');
         const logoutBtn = document.getElementById('logout-btn');
+        const passwordChangePanel = document.getElementById('password-change-panel');
+        const oldPasswordInput = document.getElementById('old-password-input');
+        const newPasswordInput = document.getElementById('new-password-input');
+        const changePasswordBtn = document.getElementById('change-password-btn');
         const accountStatus = document.getElementById('account-status');
         const leaderboardListDiv = document.getElementById('leaderboard-list');
         const leaderboardMetaDiv = document.getElementById('leaderboard-meta');
@@ -1017,6 +1041,7 @@
         let chapterCache = null;
         let chapterCacheTime = 0;
         let currentUser = null;
+        let submitProgressTimer = null;
         let leaderboardScope = 'total';
         let leaderboardState = {
             period: { dailyKey: '', weeklyKey: '' },
@@ -1152,9 +1177,23 @@
             return headers;
         }
 
+        function renderAuthControls() {
+            const loggedIn = !!(currentUser && currentUser.token);
+            usernameInput.readOnly = loggedIn;
+            passwordInput.style.display = loggedIn ? 'none' : '';
+            loginBtn.style.display = loggedIn ? 'none' : '';
+            logoutBtn.style.display = loggedIn ? '' : 'none';
+            passwordChangePanel.style.display = loggedIn ? '' : 'none';
+            if (!loggedIn) {
+                oldPasswordInput.value = '';
+                newPasswordInput.value = '';
+            }
+        }
+
         function clearCurrentUser() {
             currentUser = null;
             writeStoredToken('');
+            renderAuthControls();
             renderAccountStatus();
         }
 
@@ -1170,7 +1209,7 @@
                 return;
             }
 
-            accountStatus.textContent = `已登錄：${currentUser.username}｜段位：${totalStats.tier.tierName}｜總積分：${totalStats.points}｜參與：${totalStats.attempts} 次`;
+            accountStatus.textContent = `已登錄：${currentUser.username}｜段位：${totalStats.tier.tierName}（${totalStats.tier.modeName || '常規排位'}）｜總積分：${totalStats.points}｜參與：${totalStats.attempts} 次`;
         }
 
         function requireLogin() {
@@ -1216,6 +1255,7 @@
                 writeStoredUsername(currentUser.username);
                 writeStoredToken(currentUser.token);
                 passwordInput.value = '';
+                renderAuthControls();
                 renderAccountStatus();
                 statusDiv.textContent = data.isNewUser
                     ? `狀態：已創建新賬號 ${currentUser.username}，請選擇挑戰模式。`
@@ -1223,7 +1263,11 @@
                 await refreshLeaderboard();
                 return true;
             } catch (error) {
-                if (!options.silent) displayError(`登錄失敗：${error.message || '未知錯誤'}`, statusDiv);
+                if (!options.silent) {
+                    const detail = error.message || '未知錯誤';
+                    const hint = detail.includes('用戶名或密碼錯誤') ? '（首次註冊需固定密碼，後續請使用同一密碼登錄）' : '';
+                    displayError(`登錄失敗：${detail}${hint}`, statusDiv);
+                }
                 clearCurrentUser();
                 return false;
             } finally {
@@ -1252,6 +1296,7 @@
                 const isMe = currentUser && entry.userId === currentUser.userId;
                 const safeName = escapeHtml(entry.username);
                 const tierName = escapeHtml(entry.tier?.tierName || '工蜂');
+                const tierMode = escapeHtml(entry.tier?.modeName || '常規排位');
                 const points = Number(entry.points || 0);
                 const attempts = Number(entry.attempts || 0);
                 const avgScore = Number(entry.avgScore || 0);
@@ -1259,7 +1304,7 @@
                     <div class="leaderboard-rank">#${index + 1}</div>
                     <div class="leaderboard-user">
                         <div class="leaderboard-user-name">${safeName}</div>
-                        <div class="leaderboard-user-tier">${tierName}</div>
+                        <div class="leaderboard-user-tier">${tierName} · ${tierMode}</div>
                     </div>
                     <div class="leaderboard-score">${points}
                         <small>參與 ${attempts} 次｜均分 ${avgScore.toFixed(1)}</small>
@@ -1369,6 +1414,7 @@
         }
 
         function escapeHtml(unsafe) {
+            if (unsafe === null || unsafe === undefined) return '';
             if (typeof unsafe !== 'string') { return String(unsafe); }
             return unsafe
                 .replace(/&/g, "&amp;")
@@ -1497,6 +1543,45 @@
             }
         });
 
+        changePasswordBtn.addEventListener('click', async () => {
+            if (!currentUser?.token) {
+                displayError('請先登錄，再修改密碼。', statusDiv);
+                return;
+            }
+            const oldPassword = (oldPasswordInput.value || '').trim();
+            const newPassword = (newPasswordInput.value || '').trim();
+            if (oldPassword.length < 6 || newPassword.length < 6) {
+                displayError('密碼至少 6 位。', statusDiv);
+                return;
+            }
+            setLoadingState(changePasswordBtn, true, '修改中');
+            try {
+                const data = await requestJson(
+                    '/change_password',
+                    {
+                        method: 'POST',
+                        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ oldPassword, newPassword }),
+                    },
+                    { retries: 0, timeoutMs: 20000 }
+                );
+                currentUser.token = data.token;
+                currentUser.expiresAt = data.expiresAt;
+                writeStoredToken(data.token);
+                oldPasswordInput.value = '';
+                newPasswordInput.value = '';
+                statusDiv.textContent = '狀態：密碼修改成功。';
+            } catch (error) {
+                if (error?.status === 401) {
+                    clearCurrentUser();
+                    statusDiv.textContent = '狀態：登錄已過期，請重新登錄。';
+                }
+                displayError(`修改密碼失敗：${error.message || '未知錯誤'}`, statusDiv);
+            } finally {
+                setLoadingState(changePasswordBtn, false, '修改密碼');
+            }
+        });
+
         leaderboardTabs.forEach((tab) => {
             tab.addEventListener('click', () => {
                 const scope = tab.dataset.scope;
@@ -1576,7 +1661,7 @@
                 const hasCache = Array.isArray(chapterCache) && (Date.now() - chapterCacheTime) < CHAPTER_CACHE_TTL_MS;
                 const chapters = hasCache
                     ? chapterCache
-                    : (await requestJson('/get_chapters', { method: 'GET' }, { retries: 1 })).chapters;
+                    : (await requestJson('/get_chapters', { method: 'GET', headers: getAuthHeaders() }, { retries: 1 })).chapters;
 
                 if (!Array.isArray(chapters)) {
                     throw new Error('未能從後端獲取有效的篇目列表數據。');
@@ -1591,6 +1676,10 @@
                 renderChapterList(chapters);
             } catch (error) {
                 console.error('Error fetching chapters:', error);
+                if (error?.status === 401) {
+                    clearCurrentUser();
+                    statusDiv.textContent = '狀態：登錄已過期，請重新登錄。';
+                }
                 displayError(`獲取篇目列表時遇到問題: ${error.message || '未知錯誤'}`, chapterSelectionDiv); // Display error in chapter section
                 statusDiv.textContent = '狀態：加載篇目列表失敗';
             } finally {
@@ -1630,7 +1719,7 @@
             try {
                 const chapterQuestionsData = await requestJson(
                     `/get_chapter_questions?order=${encodeURIComponent(chapterOrder)}`,
-                    { method: 'GET' },
+                    { method: 'GET', headers: getAuthHeaders() },
                     { retries: 1 }
                 );
                 if (!chapterQuestionsData || !chapterQuestionsData.chapterOrder || !Array.isArray(chapterQuestionsData.questions)) {
@@ -1655,6 +1744,10 @@
 
             } catch (error) {
                 console.error(`Error fetching questions for chapter ${chapterOrder}:`, error);
+                if (error?.status === 401) {
+                    clearCurrentUser();
+                    statusDiv.textContent = '狀態：登錄已過期，請重新登錄。';
+                }
                 statusDiv.textContent = `狀態：加載篇目 ${chapterOrder} 題目失敗，可重試`;
                 displayError(`加載篇目 ${chapterOrder} 題目時遇到問題: ${error.message || '未知錯誤'}`, statusDiv);
                 chapterSelectionDiv.style.display = 'block';
@@ -1736,10 +1829,22 @@
             selectChapterBtn.disabled = true;
 
             // Clear previous results/chapter list and show loading in result area
-            resultDiv.innerHTML = '<div class="loading">正在上傳墨寶並恭候 AI 大師評閱，請稍安勿躁...</div>';
+            const progressPhases = [
+                '正在上傳圖片...',
+                '正在識別文字...',
+                '正在比對評分...',
+                '正在生成反饋...',
+            ];
+            let progressIndex = 0;
+            resultDiv.innerHTML = `<div class="loading">${progressPhases[progressIndex]}</div>`;
             resultDiv.style.display = 'block';
             chapterSelectionDiv.style.display = 'none'; // Ensure chapter list is hidden
             chapterSelectionDiv.innerHTML = '';
+            if (submitProgressTimer) clearInterval(submitProgressTimer);
+            submitProgressTimer = setInterval(() => {
+                progressIndex = Math.min(progressIndex + 1, progressPhases.length - 1);
+                resultDiv.innerHTML = `<div class="loading">${progressPhases[progressIndex]}</div>`;
+            }, 18000);
 
             if (rightColumn) rightColumn.scrollTo({ top: 0, behavior: 'smooth' });
 
@@ -1818,12 +1923,13 @@
                 if (resultData.userStats?.total) {
                     const totalStats = resultData.userStats.total;
                     const tierName = escapeHtml(totalStats.tier?.tierName || '工蜂');
+                    const tierMode = escapeHtml(totalStats.tier?.modeName || '常規排位');
                     const nextTierName = totalStats.tier?.nextTierName ? escapeHtml(totalStats.tier.nextTierName) : '滿級';
                     const progressPercent = Number(totalStats.tier?.progressPercent ?? 100);
                     const totalPoints = Number(totalStats.points || 0);
                     const attempts = Number(totalStats.attempts || 0);
                     rankBadgeHTML += `<div class="rank-badge-section">`;
-                    rankBadgeHTML += `<div class="badge-display">當前段位：<span>${tierName}</span></div>`;
+                    rankBadgeHTML += `<div class="badge-display">當前段位：<span>${tierName}</span>（${tierMode}）</div>`;
                     rankBadgeHTML += `<div class="rank-display">總積分 ${totalPoints} ｜參與 ${attempts} 次 ｜晉級進度 ${progressPercent}%（下一段位：${nextTierName}）</div>`;
                     rankBadgeHTML += `</div>`;
                 }
@@ -1852,10 +1958,12 @@
                 if (rightColumn) setTimeout(() => { rightColumn.scrollTo({ top: 0, behavior: 'smooth' }); }, 100);
 
                 // Submission successful:
-                // - Keep the left-side questions visible (do NOT hide/clear them)
-                // - Reset only the upload widgets so the user can optionally resubmit with a clearer photo
-                uploadSection.style.display = 'block';
-                resetUploadWidgets('已批閱。如需重交，請重新選擇一張更清晰的照片。');
+                // Require selecting a new challenge after each successful submission.
+                currentChallengeType = null;
+                currentChallengeIdentifier = null;
+                uploadSection.style.display = 'none';
+                resetUploadWidgets();
+                statusDiv.textContent = '狀態：本輪評閱已完成。請重新選擇挑戰模式開始下一輪。';
                 if (resultData.user?.username && currentUser) {
                     currentUser.username = resultData.user.username;
                 }
@@ -1889,6 +1997,10 @@
                 }
                 displayError(`提交或處理失敗: ${error.message || '未知客戶端錯誤'}`, resultDiv); // Display error in result area
             } finally {
+                if (submitProgressTimer) {
+                    clearInterval(submitProgressTimer);
+                    submitProgressTimer = null;
+                }
                 isSubmitting = false;
                 setLoadingState(submitBtn, false, '提交墨寶');
                 // Re-enable main challenge buttons after submission attempt
@@ -1899,6 +2011,7 @@
 
         // --- Initial Setup ---
         resetUI();
+        renderAuthControls();
         renderAccountStatus();
         (async () => {
             const storedUsername = readStoredUsername();
@@ -1922,11 +2035,13 @@
                         stats: me.stats,
                     };
                     usernameInput.value = currentUser.username;
+                    renderAuthControls();
                     renderAccountStatus();
                     statusDiv.textContent = `狀態：已恢復登錄為 ${currentUser.username}，請選擇挑戰模式。`;
                 } catch (error) {
                     writeStoredToken('');
                     currentUser = null;
+                    renderAuthControls();
                     renderAccountStatus();
                     if (error?.status === 401) {
                         statusDiv.textContent = '狀態：登錄已過期，請重新輸入密碼登錄。';
