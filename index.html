@@ -951,7 +951,7 @@
     </style>
     <!-- External Libraries -->
     <script
-        src="https://cdn.bootcdn.net/ajax/libs/browser-image-compression/2.0.2/browser-image-compression.js"></script>
+        src="https://cdnjs.cloudflare.com/ajax/libs/browser-image-compression/2.0.2/browser-image-compression.min.js"></script>
 </head>
 
 <body>
@@ -1177,6 +1177,10 @@
                     if (error instanceof TypeError || /Failed to fetch|NetworkError/i.test(error?.message || '')) {
                         if (typeof navigator !== 'undefined' && navigator.onLine === false) {
                             throw new Error('網絡連接已中斷，請檢查網絡後重試。');
+                        }
+                        const endpointLower = String(endpoint || '').toLowerCase();
+                        if (endpointLower.includes('/submit') || endpointLower.includes('/evaluate')) {
+                            throw new Error('網絡請求失敗，可能被瀏覽器隱私/廣告攔截（Brave Shield / uBlock）阻擋。請對本站放行後重試。');
                         }
                         throw new Error('網絡請求失敗，請稍後再試。');
                     }
@@ -1852,6 +1856,55 @@
         }
 
 
+        async function compressImageFallback(file, options = {}) {
+            const maxEdge = Number(options.maxWidthOrHeight) > 0 ? Number(options.maxWidthOrHeight) : 1920;
+            const targetBytes = Number(options.maxSizeMB) > 0 ? Math.floor(Number(options.maxSizeMB) * 1024 * 1024) : (2 * 1024 * 1024);
+            const objectUrl = URL.createObjectURL(file);
+            try {
+                const img = await new Promise((resolve, reject) => {
+                    const image = new Image();
+                    image.onload = () => resolve(image);
+                    image.onerror = () => reject(new Error('無法解碼圖片'));
+                    image.src = objectUrl;
+                });
+
+                const srcWidth = img.naturalWidth || img.width || 0;
+                const srcHeight = img.naturalHeight || img.height || 0;
+                if (!srcWidth || !srcHeight) {
+                    throw new Error('圖片尺寸無效');
+                }
+
+                const ratio = Math.min(1, maxEdge / Math.max(srcWidth, srcHeight));
+                const targetWidth = Math.max(1, Math.round(srcWidth * ratio));
+                const targetHeight = Math.max(1, Math.round(srcHeight * ratio));
+                const canvas = document.createElement('canvas');
+                canvas.width = targetWidth;
+                canvas.height = targetHeight;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    throw new Error('Canvas 不可用');
+                }
+                ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+                const tryEncode = (quality) => new Promise((resolve) => {
+                    canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality);
+                });
+
+                let outputBlob = await tryEncode(0.86);
+                if (!outputBlob) {
+                    throw new Error('圖片重編碼失敗');
+                }
+                for (const q of [0.75, 0.65, 0.55, 0.45]) {
+                    if (outputBlob.size <= targetBytes) break;
+                    const nextBlob = await tryEncode(q);
+                    if (nextBlob) outputBlob = nextBlob;
+                }
+                return outputBlob;
+            } finally {
+                URL.revokeObjectURL(objectUrl);
+            }
+        }
+
         // --- Image Upload and Compression (Same as before) ---
         imageUploadInput.addEventListener('change', async (event) => {
             const file = event.target.files[0];
@@ -1876,11 +1929,19 @@
             const options = { maxSizeMB: 1.5, maxWidthOrHeight: 1920, useWebWorker: true, preserveExif: false };
 
             try { // Compress
-                if (typeof imageCompression !== 'function') throw new Error("Image compression library not loaded.");
                 const originalSizeMb = file.size / 1024 / 1024;
-                compressedImageBlob = await imageCompression(file, options);
+                if (typeof imageCompression === 'function') {
+                    compressedImageBlob = await imageCompression(file, options);
+                } else {
+                    console.warn('browser-image-compression unavailable, falling back to canvas compression.');
+                    compressedImageBlob = await compressImageFallback(file, options);
+                }
+                if (!compressedImageBlob) {
+                    throw new Error('未能生成可提交的圖片文件。');
+                }
                 const compressedSizeMb = compressedImageBlob.size / 1024 / 1024;
-                compressionInfo.textContent = `圖片已就緒（原始 ${originalSizeMb.toFixed(2)} MB → 壓縮 ${compressedSizeMb.toFixed(2)} MB）`;
+                const compatTag = typeof imageCompression === 'function' ? '' : '（兼容模式）';
+                compressionInfo.textContent = `圖片已就緒${compatTag}（原始 ${originalSizeMb.toFixed(2)} MB → 壓縮 ${compressedSizeMb.toFixed(2)} MB）`;
                 // Enable submit button ONLY if a challenge is active
                 submitBtn.disabled = !currentChallengeType;
                 if (!currentChallengeType) {
@@ -1952,11 +2013,24 @@
             formData.append('handwritingImage', compressedImageBlob, filename);
 
             try {
-                const resultData = await requestJson(
-                    '/submit',
-                    { method: 'POST', headers: getAuthHeaders(), body: formData },
-                    { retries: 0, timeoutMs: 120000 }
-                );
+                let resultData;
+                try {
+                    resultData = await requestJson(
+                        '/evaluate',
+                        { method: 'POST', headers: getAuthHeaders(), body: formData },
+                        { retries: 0, timeoutMs: 120000 }
+                    );
+                } catch (submitAliasError) {
+                    if (submitAliasError?.status === 404) {
+                        resultData = await requestJson(
+                            '/submit',
+                            { method: 'POST', headers: getAuthHeaders(), body: formData },
+                            { retries: 0, timeoutMs: 120000 }
+                        );
+                    } else {
+                        throw submitAliasError;
+                    }
+                }
                 console.log("Result Data Received:", resultData);
 
                 // --- Render Results ---
