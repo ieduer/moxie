@@ -316,8 +316,15 @@ function createHttpError(status: number, message: string): Error & { status: num
     return error;
 }
 
-function isAllowedOrigin(origin: string | null): boolean {
-    if (!origin) return false;
+function isAllowedOrigin(origin: string | null, request?: Request): boolean {
+    if (!origin) {
+        // Same-origin browser requests may omit Origin; allow only in trusted fetch contexts.
+        const secFetchSite = request?.headers.get('Sec-Fetch-Site');
+        if (!secFetchSite) {
+            return true;
+        }
+        return secFetchSite === 'same-origin' || secFetchSite === 'same-site' || secFetchSite === 'none';
+    }
     return ALLOWED_ORIGIN_PATTERNS.some(pattern => pattern.test(origin));
 }
 
@@ -1022,7 +1029,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const chapterOrderParam = url.searchParams.get('order');
     const origin = request.headers.get('Origin');
     const baseHeaders = buildCorsHeaders(origin);
-    const originAllowed = isAllowedOrigin(origin);
+    const originAllowed = isAllowedOrigin(origin, request);
 
     if (request.method === 'OPTIONS') {
         if (!originAllowed) {
